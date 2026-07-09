@@ -1,4 +1,3 @@
-process.env.JWT_SECRET = 'secret-de-test';
 const http = require('http');
 const { io: clientIo } = require('socket.io-client');
 const creerApp = require('./app');

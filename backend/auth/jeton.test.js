@@ -1,4 +1,3 @@
-process.env.JWT_SECRET = 'secret-de-test';
 const jwt = require('jsonwebtoken');
 const { signerJeton, verifierJeton } = require('./jeton');
 
