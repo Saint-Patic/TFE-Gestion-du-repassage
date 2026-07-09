@@ -1,4 +1,3 @@
-process.env.JWT_SECRET = 'secret-de-test';
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const creerApp = require('./app');

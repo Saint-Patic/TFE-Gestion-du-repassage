@@ -1,4 +1,3 @@
-process.env.JWT_SECRET = 'secret-de-test';
 const authentifier = require('./authentifier');
 const { signerJeton } = require('../auth/jeton');
 
