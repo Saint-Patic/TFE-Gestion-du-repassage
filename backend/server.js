@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+if (!process.env.JWT_SECRET) {
+  console.error('JWT_SECRET manquant : le serveur ne peut pas démarrer.');
+  process.exit(1);
+}
+
 const express = require('express');
 const { Pool } = require('pg');
 const creerRouteurUtilisateurs = require('./routes/utilisateurs');
