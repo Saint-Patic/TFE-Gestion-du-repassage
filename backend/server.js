@@ -5,8 +5,10 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
+const http = require('http');
 const { Pool } = require('pg');
 const creerApp = require('./app');
+const { initialiserTempsReel } = require('./temps-reel');
 
 const port = process.env.PORT || 3000;
 
@@ -19,7 +21,9 @@ const pool = new Pool({
 });
 
 const app = creerApp(pool);
+const serveur = http.createServer(app);
+initialiserTempsReel(serveur);
 
-app.listen(port, () => {
+serveur.listen(port, () => {
   console.log(`Serveur démarré sur http://localhost:${port}`);
 });
