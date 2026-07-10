@@ -28,10 +28,25 @@ async function generateEtiquette({ nom, prenom, code_barre }) {
     doc.on('end', () => resolve(Buffer.concat(morceaux)));
     doc.on('error', reject);
 
+    const marge = 4;
+    const ecart = 4; // même écart nom→code-barres et code-barres→numéro
+
+    // 1. Nom prénom en haut.
     doc.fontSize(8).text(`${nom} ${prenom}`, { align: 'center' });
-    doc.image(imageCodeBarre, { fit: [largeur - 8, hauteur - 30], align: 'center' });
-    doc.moveDown(0.2);
-    doc.fontSize(7).text(code_barre, { align: 'center' });
+    const basNom = doc.y;
+
+    // 2. Code-barres sous le nom, mis à l'échelle sur la largeur dispo.
+    const largeurUtile = largeur - marge * 2;
+    const img = doc.openImage(imageCodeBarre);
+    const hauteurCodeBarre = (img.height / img.width) * largeurUtile;
+    const yCodeBarre = basNom + ecart;
+    doc.image(img, marge, yCodeBarre, { width: largeurUtile });
+
+    // 3. Code en clair, même écart sous le code-barres.
+    doc.fontSize(7).text(code_barre, marge, yCodeBarre + hauteurCodeBarre + ecart, {
+      width: largeurUtile,
+      align: 'center',
+    });
 
     doc.end();
   });
