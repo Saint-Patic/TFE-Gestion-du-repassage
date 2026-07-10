@@ -1,6 +1,7 @@
 const express = require('express');
 const creerRouteurUtilisateurs = require('./routes/utilisateurs');
 const creerRouteurAuth = require('./routes/auth');
+const creerRouteurClients = require('./routes/clients');
 
 // Fabrique : construit l'application Express à partir d'un pool pg (réel ou injecté
 // en test). Ne démarre pas le serveur (pas de listen) — testable via Supertest.
@@ -20,6 +21,7 @@ function creerApp(pool) {
 
   app.use('/api/utilisateurs', creerRouteurUtilisateurs(pool));
   app.use('/api/auth', creerRouteurAuth(pool));
+  app.use('/api/clients', creerRouteurClients(pool));
 
   return app;
 }
