@@ -1,0 +1,24 @@
+{
+  "name": "manne-bulles-agent-impression",
+  "version": "1.0.0",
+  "description": "Agent d'impression local - La Manne à Bulles",
+  "main": "serveur.js",
+  "scripts": {
+    "start": "node serveur.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "bwip-js": "^4.5.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pdfkit": "^0.15.0"
+  },
+  "optionalDependencies": {
+    "pdf-to-printer": "^5.6.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}
