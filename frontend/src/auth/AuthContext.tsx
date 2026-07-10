@@ -5,6 +5,7 @@ import type { ReponseLogin, Utilisateur } from '../api/types';
 import {
   lireJeton, ecrireJeton, effacerJeton, lireUtilisateur, ecrireUtilisateur,
 } from './stockage';
+import { connecterSocket, deconnecterSocket } from '../temps-reel/socket';
 
 const REFRESH_MS = 30 * 60 * 1000; // 30 min
 
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [chargement, setChargement] = useState(true);
 
   const deconnexion = useCallback(() => {
+    deconnecterSocket();
     effacerJeton();
     setUtilisateur(null);
   }, []);
@@ -37,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ecrireJeton(reponse.jeton);
     ecrireUtilisateur(reponse.utilisateur);
     setUtilisateur(reponse.utilisateur);
+    connecterSocket();
   }, []);
 
   // Au démarrage : valider un éventuel jeton existant.
@@ -49,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await requeteApi('/auth/session');
         setUtilisateur(lireUtilisateur());
+        connecterSocket();
       } catch {
         deconnexion();
       } finally {
