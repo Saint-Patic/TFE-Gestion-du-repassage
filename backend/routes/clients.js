@@ -8,6 +8,19 @@ const MAX_TENTATIVES = 5;
 function creerRouteurClients(pool) {
   const routeur = express.Router();
 
+  // Liste des clients (recherche/filtrage fait côté frontend).
+  routeur.get('/', authentifier, async (req, res) => {
+    try {
+      const resultat = await pool.query(
+        `SELECT id_client, nom, prenom, telephone, email, code_barre, date_creation
+         FROM client ORDER BY nom, prenom`
+      );
+      res.json(resultat.rows);
+    } catch (err) {
+      res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
   // Crée un client + code-barres unique. Bearer requis (rôle géré plus tard, #110).
   routeur.post('/', authentifier, async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
