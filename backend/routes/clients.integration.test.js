@@ -194,3 +194,51 @@ describe('PUT /api/clients/:id (US #100)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('DELETE /api/clients/:id (US #100)', () => {
+  test('client sans commande → 200 { anonymise: false }', async () => {
+    const app = creerApp({
+      query: async (sql) => (sql.trim().startsWith('DELETE') ? { rowCount: 1 } : { rows: [] }),
+    });
+    const res = await request(app)
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ anonymise: false });
+  });
+
+  test('client avec commandes (23503) → 200 { anonymise: true }', async () => {
+    const app = creerApp({
+      query: async (sql) => {
+        if (sql.trim().startsWith('DELETE')) {
+          const e = new Error('violation FK');
+          e.code = '23503';
+          throw e;
+        }
+        if (sql.trim().startsWith('UPDATE')) return { rowCount: 1 };
+        return { rows: [] };
+      },
+    });
+    const res = await request(app)
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ anonymise: true });
+  });
+
+  test('id inexistant → 404', async () => {
+    const app = creerApp({
+      query: async (sql) => (sql.trim().startsWith('DELETE') ? { rowCount: 0 } : { rows: [] }),
+    });
+    const res = await request(app)
+      .delete('/api/clients/zzz')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test('sans jeton → 401', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 0 }) });
+    const res = await request(app).delete('/api/clients/abc');
+    expect(res.status).toBe(401);
+  });
+});
