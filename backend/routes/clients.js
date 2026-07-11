@@ -77,6 +77,33 @@ function creerRouteurClients(pool) {
     }
   });
 
+  // Supprime un client ; s'il a des commandes (FK 23503), l'anonymise à la place (RGPD).
+  routeur.delete('/:id', authentifier, async (req, res) => {
+    const id = req.params.id;
+    try {
+      const resultat = await pool.query('DELETE FROM client WHERE id_client=$1', [id]);
+      if (resultat.rowCount === 0) {
+        return res.status(404).json({ message: 'Client introuvable.' });
+      }
+      return res.json({ anonymise: false });
+    } catch (err) {
+      if (err.code === '23503') {
+        const anon = await pool.query(
+          `UPDATE client
+           SET nom='Anonymisé', prenom='', telephone='', email=NULL,
+               code_barre='ANON-' || id_client
+           WHERE id_client=$1`,
+          [id]
+        );
+        if (anon.rowCount === 0) {
+          return res.status(404).json({ message: 'Client introuvable.' });
+        }
+        return res.json({ anonymise: true });
+      }
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
   return routeur;
 }
 
