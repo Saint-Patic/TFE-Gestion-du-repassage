@@ -68,3 +68,67 @@ describe('POST /api/clients (US #90)', () => {
     expect(appels).toBe(2);
   });
 });
+
+describe('Unicité du code-barres (US #95)', () => {
+  // Fabrique un app dont l'INSERT échoue `nbCollisions` fois avec 23505 avant de réussir.
+  // `codeErreurAutre` force plutôt une autre erreur (non-collision) dès le 1er appel.
+  function appAvecComportement({ nbCollisions = 0, codeErreurAutre = null } = {}) {
+    let appels = 0;
+    const codesEssayes = [];
+    const app = creerApp({
+      query: async (sql, params) => {
+        appels++;
+        codesEssayes.push(params[4]);
+        if (codeErreurAutre) {
+          const err = new Error('autre erreur');
+          err.code = codeErreurAutre;
+          throw err;
+        }
+        if (appels <= nbCollisions) {
+          const err = new Error('doublon');
+          err.code = '23505';
+          throw err;
+        }
+        return {
+          rows: [{
+            id_client: 'abc', nom: params[0], prenom: params[1], telephone: params[2],
+            email: params[3], code_barre: params[4], date_creation: 'x',
+          }],
+        };
+      },
+    });
+    return { app, getAppels: () => appels, codesEssayes };
+  }
+
+  test('A. épuisement des tentatives (toujours 23505) → 500 + arrêt propre', async () => {
+    const { app, getAppels, codesEssayes } = appAvecComportement({ nbCollisions: 999 });
+    const res = await request(app)
+      .post('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(corpsValide);
+    expect(res.status).toBe(500);
+    expect(res.body.message).toMatch(/code-barres unique/);
+    expect(getAppels()).toBe(5); // MAX_TENTATIVES : la boucle ne part pas à l'infini
+    expect(new Set(codesEssayes).size).toBe(5); // 5 codes distincts essayés
+  });
+
+  test('B. collisions multiples successives puis succès → 201', async () => {
+    const { app, getAppels } = appAvecComportement({ nbCollisions: 3 });
+    const res = await request(app)
+      .post('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(corpsValide);
+    expect(res.status).toBe(201);
+    expect(getAppels()).toBe(4); // 3 collisions + 1 succès
+  });
+
+  test('C. erreur non-23505 → 500 sans réessai', async () => {
+    const { app, getAppels } = appAvecComportement({ codeErreurAutre: '23502' });
+    const res = await request(app)
+      .post('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(corpsValide);
+    expect(res.status).toBe(500);
+    expect(getAppels()).toBe(1); // pas de régénération pour une erreur autre qu'une collision
+  });
+});
