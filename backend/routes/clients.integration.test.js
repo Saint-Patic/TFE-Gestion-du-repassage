@@ -132,3 +132,113 @@ describe('Unicité du code-barres (US #95)', () => {
     expect(getAppels()).toBe(1); // pas de régénération pour une erreur autre qu'une collision
   });
 });
+
+describe('GET /api/clients (US #100)', () => {
+  test('sans jeton → 401', async () => {
+    const app = creerApp({ query: async () => ({ rows: [] }) });
+    const res = await request(app).get('/api/clients');
+    expect(res.status).toBe(401);
+  });
+
+  test('avec jeton → 200 + tableau', async () => {
+    const clients = [{
+      id_client: '1', nom: 'Dupont', prenom: 'Marie', telephone: '0470',
+      email: null, code_barre: 'AB', date_creation: 'x',
+    }];
+    const app = creerApp({ query: async () => ({ rows: clients }) });
+    const res = await request(app)
+      .get('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].nom).toBe('Dupont');
+  });
+});
+
+describe('PUT /api/clients/:id (US #100)', () => {
+  const modif = { nom: 'Durand', prenom: 'Luc', telephone: '0480000000' };
+
+  test('modification valide → 200 + client modifié', async () => {
+    const app = creerApp({
+      query: async (sql, params) => ({
+        rowCount: 1,
+        rows: [{
+          id_client: params[4], nom: params[0], prenom: params[1], telephone: params[2],
+          email: params[3], code_barre: 'AB', date_creation: 'x',
+        }],
+      }),
+    });
+    const res = await request(app)
+      .put('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(modif);
+    expect(res.status).toBe(200);
+    expect(res.body.nom).toBe('Durand');
+  });
+
+  test('champ requis manquant → 400', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 1, rows: [] }) });
+    const res = await request(app)
+      .put('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send({ nom: 'Durand' });
+    expect(res.status).toBe(400);
+  });
+
+  test('id inexistant → 404', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 0, rows: [] }) });
+    const res = await request(app)
+      .put('/api/clients/zzz')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(modif);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/clients/:id (US #100)', () => {
+  test('client sans commande → 200 { anonymise: false }', async () => {
+    const app = creerApp({
+      query: async (sql) => (sql.trim().startsWith('DELETE') ? { rowCount: 1 } : { rows: [] }),
+    });
+    const res = await request(app)
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ anonymise: false });
+  });
+
+  test('client avec commandes (23503) → 200 { anonymise: true }', async () => {
+    const app = creerApp({
+      query: async (sql) => {
+        if (sql.trim().startsWith('DELETE')) {
+          const e = new Error('violation FK');
+          e.code = '23503';
+          throw e;
+        }
+        if (sql.trim().startsWith('UPDATE')) return { rowCount: 1 };
+        return { rows: [] };
+      },
+    });
+    const res = await request(app)
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ anonymise: true });
+  });
+
+  test('id inexistant → 404', async () => {
+    const app = creerApp({
+      query: async (sql) => (sql.trim().startsWith('DELETE') ? { rowCount: 0 } : { rows: [] }),
+    });
+    const res = await request(app)
+      .delete('/api/clients/zzz')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test('sans jeton → 401', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 0 }) });
+    const res = await request(app).delete('/api/clients/abc');
+    expect(res.status).toBe(401);
+  });
+});
