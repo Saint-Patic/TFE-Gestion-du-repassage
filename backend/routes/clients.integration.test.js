@@ -132,3 +132,25 @@ describe('Unicité du code-barres (US #95)', () => {
     expect(getAppels()).toBe(1); // pas de régénération pour une erreur autre qu'une collision
   });
 });
+
+describe('GET /api/clients (US #100)', () => {
+  test('sans jeton → 401', async () => {
+    const app = creerApp({ query: async () => ({ rows: [] }) });
+    const res = await request(app).get('/api/clients');
+    expect(res.status).toBe(401);
+  });
+
+  test('avec jeton → 200 + tableau', async () => {
+    const clients = [{
+      id_client: '1', nom: 'Dupont', prenom: 'Marie', telephone: '0470',
+      email: null, code_barre: 'AB', date_creation: 'x',
+    }];
+    const app = creerApp({ query: async () => ({ rows: clients }) });
+    const res = await request(app)
+      .get('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].nom).toBe('Dupont');
+  });
+});
