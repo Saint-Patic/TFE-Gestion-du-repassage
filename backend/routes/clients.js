@@ -4,6 +4,16 @@ const { genererCodeBarre } = require('../clients/code-barre');
 
 const MAX_TENTATIVES = 5;
 
+// Valide les champs client (partagé création/modification). Renvoie un message ou null.
+function validerClient({ nom, prenom, telephone, email }) {
+  if (!nom || !prenom || !telephone) return 'nom, prenom et telephone sont requis.';
+  if (nom.length > 100 || prenom.length > 100 || telephone.length > 20) {
+    return 'Un champ dépasse la longueur autorisée.';
+  }
+  if (email && (email.length > 255 || !email.includes('@'))) return 'Email invalide.';
+  return null;
+}
+
 // Fabrique : routeur clients alimenté par le pool pg fourni.
 function creerRouteurClients(pool) {
   const routeur = express.Router();
@@ -24,16 +34,8 @@ function creerRouteurClients(pool) {
   // Crée un client + code-barres unique. Bearer requis (rôle géré plus tard, #110).
   routeur.post('/', authentifier, async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
-
-    if (!nom || !prenom || !telephone) {
-      return res.status(400).json({ message: 'nom, prenom et telephone sont requis.' });
-    }
-    if (nom.length > 100 || prenom.length > 100 || telephone.length > 20) {
-      return res.status(400).json({ message: 'Un champ dépasse la longueur autorisée.' });
-    }
-    if (email && (email.length > 255 || !email.includes('@'))) {
-      return res.status(400).json({ message: 'Email invalide.' });
-    }
+    const erreur = validerClient({ nom, prenom, telephone, email });
+    if (erreur) return res.status(400).json({ message: erreur });
 
     // Réessai si collision de code_barre (contrainte UNIQUE → code Postgres 23505).
     for (let tentative = 0; tentative < MAX_TENTATIVES; tentative++) {
@@ -52,6 +54,27 @@ function creerRouteurClients(pool) {
       }
     }
     return res.status(500).json({ message: 'Impossible de générer un code-barres unique.' });
+  });
+
+  // Modifie les champs éditables d'un client (jamais le code_barre).
+  routeur.put('/:id', authentifier, async (req, res) => {
+    const { nom, prenom, telephone, email } = req.body || {};
+    const erreur = validerClient({ nom, prenom, telephone, email });
+    if (erreur) return res.status(400).json({ message: erreur });
+    try {
+      const resultat = await pool.query(
+        `UPDATE client SET nom=$1, prenom=$2, telephone=$3, email=$4
+         WHERE id_client=$5
+         RETURNING id_client, nom, prenom, telephone, email, code_barre, date_creation`,
+        [nom, prenom, telephone, email || null, req.params.id]
+      );
+      if (resultat.rowCount === 0) {
+        return res.status(404).json({ message: 'Client introuvable.' });
+      }
+      return res.json(resultat.rows[0]);
+    } catch (err) {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
   });
 
   return routeur;

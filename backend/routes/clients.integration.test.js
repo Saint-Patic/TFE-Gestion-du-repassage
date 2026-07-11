@@ -154,3 +154,43 @@ describe('GET /api/clients (US #100)', () => {
     expect(res.body[0].nom).toBe('Dupont');
   });
 });
+
+describe('PUT /api/clients/:id (US #100)', () => {
+  const modif = { nom: 'Durand', prenom: 'Luc', telephone: '0480000000' };
+
+  test('modification valide → 200 + client modifié', async () => {
+    const app = creerApp({
+      query: async (sql, params) => ({
+        rowCount: 1,
+        rows: [{
+          id_client: params[4], nom: params[0], prenom: params[1], telephone: params[2],
+          email: params[3], code_barre: 'AB', date_creation: 'x',
+        }],
+      }),
+    });
+    const res = await request(app)
+      .put('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(modif);
+    expect(res.status).toBe(200);
+    expect(res.body.nom).toBe('Durand');
+  });
+
+  test('champ requis manquant → 400', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 1, rows: [] }) });
+    const res = await request(app)
+      .put('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send({ nom: 'Durand' });
+    expect(res.status).toBe(400);
+  });
+
+  test('id inexistant → 404', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 0, rows: [] }) });
+    const res = await request(app)
+      .put('/api/clients/zzz')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send(modif);
+    expect(res.status).toBe(404);
+  });
+});
