@@ -1,5 +1,6 @@
 const express = require('express');
 const authentifier = require('../middlewares/authentifier');
+const exigerRole = require('../middlewares/exiger-role');
 const { genererCodeBarre } = require('../clients/code-barre');
 
 const MAX_TENTATIVES = 5;
@@ -19,7 +20,7 @@ function creerRouteurClients(pool) {
   const routeur = express.Router();
 
   // Liste des clients (recherche/filtrage fait côté frontend).
-  routeur.get('/', authentifier, async (req, res) => {
+  routeur.get('/', authentifier, exigerRole('gerante'), async (req, res) => {
     try {
       const resultat = await pool.query(
         `SELECT id_client, nom, prenom, telephone, email, code_barre, date_creation
@@ -32,7 +33,7 @@ function creerRouteurClients(pool) {
   });
 
   // Crée un client + code-barres unique. Bearer requis (rôle géré plus tard, #110).
-  routeur.post('/', authentifier, async (req, res) => {
+  routeur.post('/', authentifier, exigerRole('gerante'), async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
     const erreur = validerClient({ nom, prenom, telephone, email });
     if (erreur) return res.status(400).json({ message: erreur });
@@ -57,7 +58,7 @@ function creerRouteurClients(pool) {
   });
 
   // Modifie les champs éditables d'un client (jamais le code_barre).
-  routeur.put('/:id', authentifier, async (req, res) => {
+  routeur.put('/:id', authentifier, exigerRole('gerante'), async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
     const erreur = validerClient({ nom, prenom, telephone, email });
     if (erreur) return res.status(400).json({ message: erreur });
@@ -78,7 +79,7 @@ function creerRouteurClients(pool) {
   });
 
   // Supprime un client ; s'il a des commandes (FK 23503), l'anonymise à la place (RGPD).
-  routeur.delete('/:id', authentifier, async (req, res) => {
+  routeur.delete('/:id', authentifier, exigerRole('gerante'), async (req, res) => {
     const id = req.params.id;
     try {
       const resultat = await pool.query('DELETE FROM client WHERE id_client=$1', [id]);

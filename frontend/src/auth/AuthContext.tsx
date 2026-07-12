@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { requeteApi, definirFournisseurJeton } from '../api/client';
 import type { ReponseLogin, Utilisateur } from '../api/types';
 import {
@@ -24,12 +25,15 @@ definirFournisseurJeton(() => lireJeton());
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [utilisateur, setUtilisateur] = useState<Utilisateur | null>(null);
   const [chargement, setChargement] = useState(true);
+  const queryClient = useQueryClient();
 
   const deconnexion = useCallback(() => {
     deconnecterSocket();
     effacerJeton();
     setUtilisateur(null);
-  }, []);
+    // Vide le cache : les données d'une session ne doivent pas fuiter vers la suivante.
+    queryClient.clear();
+  }, [queryClient]);
 
   const connexion = useCallback(async (idUtilisateur: string, pin: string) => {
     const reponse = await requeteApi<ReponseLogin>('/auth/login', {
