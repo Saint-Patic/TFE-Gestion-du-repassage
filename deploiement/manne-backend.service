@@ -1,0 +1,15 @@
+[Unit]
+Description=Backend La Manne a Bulles (Node/Express)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=debian
+WorkingDirectory=/opt/manne/backend
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
