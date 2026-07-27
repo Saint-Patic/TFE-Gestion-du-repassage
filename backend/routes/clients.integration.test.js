@@ -3,9 +3,12 @@ const creerApp = require('../app');
 const { signerJeton } = require('../auth/jeton');
 
 const UUID_TEST = '11111111-1111-1111-1111-111111111111';
+const UUID_REPASSEUSE = '22222222-2222-2222-2222-222222222222';
 const maintenant = () => Math.floor(Date.now() / 1000);
 const jetonValide = () =>
   signerJeton({ id_utilisateur: UUID_TEST, role: 'gerante', session_debut: maintenant() });
+const jetonRepasseuse = () =>
+  signerJeton({ id_utilisateur: UUID_REPASSEUSE, role: 'repasseuse', session_debut: maintenant() });
 
 const corpsValide = { nom: 'Dupont', prenom: 'Marie', telephone: '0470000000' };
 
@@ -240,5 +243,50 @@ describe('DELETE /api/clients/:id (US #100)', () => {
     const app = creerApp({ query: async () => ({ rowCount: 0 }) });
     const res = await request(app).delete('/api/clients/abc');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('Autorisation par rôle sur les routes clients (US #115)', () => {
+  // Pool "compteur" : révèle si le handler a été atteint (le garde doit couper avant).
+  function appCompteur() {
+    let requetesDB = 0;
+    const app = creerApp({
+      query: async (sql) => {
+        requetesDB++;
+        if (sql.trim().startsWith('DELETE')) return { rowCount: 1 };
+        if (sql.trim().startsWith('UPDATE')) return { rowCount: 1, rows: [{ id_client: 'x' }] };
+        return { rows: [{ id_client: 'x', nom: 'A', prenom: 'B', telephone: '0', email: null, code_barre: 'AB', date_creation: 'x' }] };
+      },
+    });
+    return { app, getRequetesDB: () => requetesDB };
+  }
+
+  // Chaque route sensible, décrite pour itérer proprement.
+  const routes = [
+    { methode: 'get', chemin: '/api/clients' },
+    { methode: 'post', chemin: '/api/clients' },
+    { methode: 'put', chemin: '/api/clients/abc' },
+    { methode: 'delete', chemin: '/api/clients/abc' },
+  ];
+
+  describe('une repasseuse est refusée (403) et n’atteint jamais la DB', () => {
+    test.each(routes)('$methode $chemin → 403', async ({ methode, chemin }) => {
+      const { app, getRequetesDB } = appCompteur();
+      const res = await request(app)[methode](chemin)
+        .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+        .send(corpsValide);
+      expect(res.status).toBe(403);
+      expect(getRequetesDB()).toBe(0); // garde coupe avant tout accès DB
+    });
+  });
+
+  describe('une gérante franchit le garde (jamais 403)', () => {
+    test.each(routes)('$methode $chemin → pas 403', async ({ methode, chemin }) => {
+      const { app } = appCompteur();
+      const res = await request(app)[methode](chemin)
+        .set('Authorization', `Bearer ${jetonValide()}`)
+        .send(corpsValide);
+      expect(res.status).not.toBe(403);
+    });
   });
 });
