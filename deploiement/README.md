@@ -19,6 +19,10 @@ cd ../frontend && npm ci && npm run build
 sudo systemctl restart manne-backend
 ```
 
+### Vulnérabilités signalées
+Après un npm ci, npm signale **20 vulnérabilités high***. Elles proviennent uniquement de Jest, l'outil de test, et n'ont aucun impact en production : le backend lance `node server.js` et n'utilise jamais Jest. Vérifiable avec `npm audit --omit=dev`, qui renvoie **0 vulnerabilities**.
+Pour ne même pas les voir apparaître sur le serveur, installer avec `npm ci --omit=dev : seules les dépendances de production sont installées (les devDependencies sont ignorées).
+
 ## Emplacements sur le serveur
 
 - Code : `/opt/manne` (dépôt cloné, propriétaire `debian`)
