@@ -27,3 +27,12 @@ export type NouveauClient = {
   telephone: string;
   email?: string;
 };
+
+export type Commande = {
+  id_commande: string;
+  id_client: string;
+  statut: 'a_faire' | 'en_cours' | 'fait' | 'recupere';
+  nombre_mannes: number;
+  prioritaire: boolean;
+  date_reception: string;
+};
