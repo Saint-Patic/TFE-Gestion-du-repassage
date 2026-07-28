@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const COUT_BCRYPT = 10;
 const FORMAT_PIN = /^\d{4}$/;
