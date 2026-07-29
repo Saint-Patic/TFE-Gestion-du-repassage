@@ -54,6 +54,7 @@ CREATE TABLE commande (
                             CHECK (statut IN ('a_faire','en_cours','fait','recupere')),
     prioritaire         BOOLEAN NOT NULL DEFAULT FALSE,
     cintres_client      BOOLEAN NOT NULL DEFAULT FALSE,
+    cintres_entr_rendus BOOLEAN NOT NULL DEFAULT FALSE,  -- client a rendu des cintres entreprise
     cintres_entr_nb     SMALLINT,
     nombre_mannes       SMALLINT NOT NULL DEFAULT 0,
     temps_repassage_s   INTEGER NOT NULL DEFAULT 0,  -- secondes écoulées, hors pauses
