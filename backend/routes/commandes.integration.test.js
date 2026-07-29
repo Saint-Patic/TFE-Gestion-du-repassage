@@ -235,3 +235,100 @@ describe('POST /api/commandes/:id/emplacements (US #160)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /api/commandes (US #180)', () => {
+  const lignesJoin = [{
+    id_commande: 'c1', id_client: UUID_CLIENT, statut: 'a_faire', nombre_mannes: 2,
+    prioritaire: false, cintres_client: false, cintres_entr_rendus: false,
+    date_reception: 'x', client_nom: 'Dupont', client_prenom: 'Marie',
+  }];
+
+  test('sans jeton → 401', async () => {
+    const app = creerApp({ query: async () => ({ rows: lignesJoin }) });
+    const res = await request(app).get('/api/commandes');
+    expect(res.status).toBe(401);
+  });
+
+  test('liste (gérante) → 200 + client_nom/prenom', async () => {
+    const app = creerApp({ query: async () => ({ rows: lignesJoin }) });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(res.body[0].client_nom).toBe('Dupont');
+    expect(res.body[0].client_prenom).toBe('Marie');
+  });
+
+  test('repasseuse autorisée → 200', async () => {
+    const app = creerApp({ query: async () => ({ rows: lignesJoin }) });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('PUT /api/commandes/:id (US #180)', () => {
+  // Faux pool : UPDATE renvoie updateRow(s) ; SELECT statut renvoie selectRows.
+  function poolPut({ updateRowCount, updateRow, selectRows }) {
+    return {
+      query: async (sql) => {
+        if (/^\s*UPDATE commande/i.test(sql)) {
+          return { rowCount: updateRowCount, rows: updateRow ? [updateRow] : [] };
+        }
+        if (/SELECT statut FROM commande/i.test(sql)) {
+          return { rowCount: selectRows.length, rows: selectRows };
+        }
+        return { rowCount: 0, rows: [] };
+      },
+    };
+  }
+  const majOk = {
+    id_commande: UUID_CMD, id_client: UUID_CLIENT, statut: 'a_faire', nombre_mannes: 4,
+    prioritaire: true, cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
+  };
+
+  test('sans jeton → 401', async () => {
+    const app = creerApp(poolPut({ updateRowCount: 1, updateRow: majOk, selectRows: [] }));
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`).send({ nombre_mannes: 4 });
+    expect(res.status).toBe(401);
+  });
+
+  test('maj valide d’une commande à faire → 200 + valeurs', async () => {
+    const app = creerApp(poolPut({ updateRowCount: 1, updateRow: majOk, selectRows: [] }));
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({ nombre_mannes: 4, prioritaire: true });
+    expect(res.status).toBe(200);
+    expect(res.body.nombre_mannes).toBe(4);
+    expect(res.body.prioritaire).toBe(true);
+  });
+
+  test('nombre_mannes < 1 → 400 sans accès DB', async () => {
+    let requetesDB = 0;
+    const app = creerApp({ query: async () => { requetesDB++; return { rowCount: 0, rows: [] }; } });
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 0 });
+    expect(res.status).toBe(400);
+    expect(requetesDB).toBe(0);
+  });
+
+  test('flag non booléen → 400 sans accès DB', async () => {
+    let requetesDB = 0;
+    const app = creerApp({ query: async () => { requetesDB++; return { rowCount: 0, rows: [] }; } });
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2, prioritaire: 'oui' });
+    expect(res.status).toBe(400);
+    expect(requetesDB).toBe(0);
+  });
+
+  test('commande pas « à faire » → 409', async () => {
+    const app = creerApp(poolPut({ updateRowCount: 0, updateRow: null, selectRows: [{ statut: 'en_cours' }] }));
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2 });
+    expect(res.status).toBe(409);
+  });
+
+  test('commande absente → 404', async () => {
+    const app = creerApp(poolPut({ updateRowCount: 0, updateRow: null, selectRows: [] }));
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2 });
+    expect(res.status).toBe(404);
+  });
+});
