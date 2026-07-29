@@ -12,6 +12,9 @@ export function Encodage() {
   const [code, setCode] = useState('');
   const [client, setClient] = useState<Client | null>(null);
   const [mannes, setMannes] = useState('1');
+  const [prioritaire, setPrioritaire] = useState(false);
+  const [cintresClient, setCintresClient] = useState(false);
+  const [cintresEntrRendus, setCintresEntrRendus] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
 
@@ -72,7 +75,13 @@ export function Encodage() {
     }
     setErreur(null);
     try {
-      const cmd = await creerCommande({ id_client: client.id_client, nombre_mannes: nb });
+      const cmd = await creerCommande({
+        id_client: client.id_client,
+        nombre_mannes: nb,
+        prioritaire,
+        cintres_client: cintresClient,
+        cintres_entr_rendus: cintresEntrRendus,
+      });
       setCommande({ id_commande: cmd.id_commande, nombre_mannes: cmd.nombre_mannes });
       setScans([]);
       setCode('');
@@ -122,6 +131,9 @@ export function Encodage() {
       setClient(null);
       setCode('');
       setMannes('1');
+      setPrioritaire(false);
+      setCintresClient(false);
+      setCintresEntrRendus(false);
     } catch {
       setErreur('Impossible d’enregistrer les emplacements.');
     }
@@ -161,6 +173,30 @@ export function Encodage() {
                 value={mannes}
                 onChange={(e) => setMannes(e.target.value)}
               />
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={prioritaire}
+                  onChange={(e) => setPrioritaire(e.target.checked)}
+                />
+                Prioritaire
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={cintresClient}
+                  onChange={(e) => setCintresClient(e.target.checked)}
+                />
+                Cintres client
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={cintresEntrRendus}
+                  onChange={(e) => setCintresEntrRendus(e.target.checked)}
+                />
+                Cintres entreprise rendus
+              </label>
               <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
                 Valider la réception
               </button>
