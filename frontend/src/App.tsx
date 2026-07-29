@@ -3,6 +3,7 @@ import { Connexion } from './pages/Connexion';
 import { Accueil } from './pages/Accueil';
 import { NouveauClient } from './pages/NouveauClient';
 import { Clients } from './pages/Clients';
+import { Encodage } from './pages/Encodage';
 import { RouteProtegee } from './composants/RouteProtegee';
 import { RouteRole } from './composants/RouteRole';
 
@@ -11,6 +12,7 @@ export default function App() {
     <Routes>
       <Route path="/connexion" element={<Connexion />} />
       <Route path="/" element={<RouteProtegee><Accueil /></RouteProtegee>} />
+      <Route path="/encodage" element={<RouteProtegee><Encodage /></RouteProtegee>} />
       <Route path="/clients/nouveau" element={<RouteProtegee><RouteRole roles={['gerante']}><NouveauClient /></RouteRole></RouteProtegee>} />
       <Route path="/clients" element={<RouteProtegee><RouteRole roles={['gerante']}><Clients /></RouteRole></RouteProtegee>} />
     </Routes>

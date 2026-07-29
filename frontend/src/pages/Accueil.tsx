@@ -9,6 +9,12 @@ export function Accueil() {
     <div className="flex flex-col items-start gap-3">
       <h1 className="text-xl font-bold">Accueil</h1>
       <p>Bienvenue. Choisissez une action.</p>
+      <Link
+        to="/encodage"
+        className="inline-block rounded bg-blue-600 px-4 py-2 text-white"
+      >
+        Encodage / Réception
+      </Link>
       {estGerante && (
         <>
           <Link
