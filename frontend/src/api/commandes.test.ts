@@ -23,17 +23,25 @@ describe('rechercherClientParCodeBarre', () => {
 });
 
 describe('creerCommande', () => {
-  test('POST /api/commandes avec id_client + nombre_mannes', async () => {
+  test('POST /api/commandes transmet id_client, mannes et les 3 flags', async () => {
     const commande = {
       id_commande: 'cmd1', id_client: 'abc', statut: 'a_faire',
-      nombre_mannes: 3, prioritaire: false, date_reception: 'x',
+      nombre_mannes: 3, prioritaire: true, cintres_client: false,
+      cintres_entr_rendus: true, date_reception: 'x',
     };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(commande), { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
-    const r = await creerCommande({ id_client: 'abc', nombre_mannes: 3 });
+    const r = await creerCommande({
+      id_client: 'abc', nombre_mannes: 3,
+      prioritaire: true, cintres_client: false, cintres_entr_rendus: true,
+    });
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/commandes');
     expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({
+      id_client: 'abc', nombre_mannes: 3,
+      prioritaire: true, cintres_client: false, cintres_entr_rendus: true,
+    });
     expect(r.statut).toBe('a_faire');
   });
 });

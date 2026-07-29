@@ -23,6 +23,34 @@ sudo systemctl restart manne-backend
 Après un npm ci, npm signale **20 vulnérabilités high***. Elles proviennent uniquement de Jest, l'outil de test, et n'ont aucun impact en production : le backend lance `node server.js` et n'utilise jamais Jest. Vérifiable avec `npm audit --omit=dev`, qui renvoie **0 vulnerabilities**.
 Pour ne même pas les voir apparaître sur le serveur, installer avec `npm ci --omit=dev : seules les dépendances de production sont installées (les devDependencies sont ignorées).
 
+## Seed initial des emplacements (étagères)
+
+Les 42 emplacements physiques (`A1G`…`E3D`) doivent exister en base pour l'encodage
+(scan des emplacements, US #160). À lancer **une fois** après le premier déploiement qui
+inclut #160. Le script est **idempotent** (relançable sans créer de doublon) :
+
+```bash
+cd /opt/manne/backend
+node scripts/seed-emplacements.js
+```
+
+Sortie attendue : `Emplacements insérés : 42 (sur 42).` (puis `0 (sur 42).` aux relances).
+Le script lit les identifiants de la base dans `backend/.env`.
+
+## Migration — colonne cintres_entr_rendus (US #170)
+
+La base prod existe déjà : la nouvelle colonne `commande.cintres_entr_rendus` (booléen « le client
+a rendu des cintres entreprise ») est ajoutée par un script **idempotent** (`ADD COLUMN IF NOT
+EXISTS`), à lancer **une fois** après le déploiement qui inclut #170 :
+
+```bash
+cd /opt/manne/backend
+node scripts/ajouter-cintres-entr-rendus.js
+```
+
+Sortie attendue : `Colonne cintres_entr_rendus : présente (ajoutée si nécessaire).` Rejouable sans
+risque. Le script lit les identifiants de la base dans `backend/.env`.
+
 ## Emplacements sur le serveur
 
 - Code : `/opt/manne` (dépôt cloné, propriétaire `debian`)

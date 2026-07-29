@@ -6,9 +6,15 @@ export function rechercherClientParCodeBarre(code: string): Promise<Client> {
   return requeteApi<Client>(`/clients/code-barre/${encodeURIComponent(code)}`);
 }
 
-// Crée une commande (réception) : client + nombre de mannes.
+// Crée une commande (réception) : client + nombre de mannes + flags (cintres / prioritaire).
 export function creerCommande(
-  donnees: { id_client: string; nombre_mannes: number }
+  donnees: {
+    id_client: string;
+    nombre_mannes: number;
+    prioritaire?: boolean;
+    cintres_client?: boolean;
+    cintres_entr_rendus?: boolean;
+  }
 ): Promise<Commande> {
   return requeteApi<Commande>('/commandes', {
     method: 'POST',
