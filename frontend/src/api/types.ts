@@ -34,6 +34,8 @@ export type Commande = {
   statut: 'a_faire' | 'en_cours' | 'fait' | 'recupere';
   nombre_mannes: number;
   prioritaire: boolean;
+  cintres_client: boolean;
+  cintres_entr_rendus: boolean;
   date_reception: string;
 };
 

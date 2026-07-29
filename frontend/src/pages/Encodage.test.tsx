@@ -30,7 +30,8 @@ async function allerEnPlacement(mannes: number) {
   vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
   vi.mocked(creerCommande).mockResolvedValue({
     id_commande: 'cmd1', id_client: 'abc', statut: 'a_faire',
-    nombre_mannes: mannes, prioritaire: false, date_reception: 'x',
+    nombre_mannes: mannes, prioritaire: false,
+    cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
   });
   render(<Encodage />);
   await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
@@ -60,7 +61,8 @@ describe('Encodage — réception (US #150)', () => {
     vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
     vi.mocked(creerCommande).mockResolvedValue({
       id_commande: 'cmd1', id_client: 'abc', statut: 'a_faire',
-      nombre_mannes: 2, prioritaire: false, date_reception: 'x',
+      nombre_mannes: 2, prioritaire: false,
+      cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
     });
     render(<Encodage />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
@@ -68,7 +70,30 @@ describe('Encodage — réception (US #150)', () => {
     await userEvent.clear(champMannes);
     await userEvent.type(champMannes, '2');
     await userEvent.click(screen.getByRole('button', { name: /Valider la réception/ }));
-    expect(creerCommande).toHaveBeenCalledWith({ id_client: 'abc', nombre_mannes: 2 });
+    expect(creerCommande).toHaveBeenCalledWith({
+      id_client: 'abc', nombre_mannes: 2,
+      prioritaire: false, cintres_client: false, cintres_entr_rendus: false,
+    });
+  });
+
+  test('cases cochées → creerCommande reçoit les flags à true (US #170)', async () => {
+    vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
+    vi.mocked(creerCommande).mockResolvedValue({
+      id_commande: 'cmd1', id_client: 'abc', statut: 'a_faire',
+      nombre_mannes: 1, prioritaire: true,
+      cintres_client: true, cintres_entr_rendus: true, date_reception: 'x',
+    });
+    render(<Encodage />);
+    await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
+    await screen.findByLabelText('Nombre de mannes');
+    await userEvent.click(screen.getByLabelText('Prioritaire'));
+    await userEvent.click(screen.getByLabelText('Cintres client'));
+    await userEvent.click(screen.getByLabelText('Cintres entreprise rendus'));
+    await userEvent.click(screen.getByRole('button', { name: /Valider la réception/ }));
+    expect(creerCommande).toHaveBeenCalledWith({
+      id_client: 'abc', nombre_mannes: 1,
+      prioritaire: true, cintres_client: true, cintres_entr_rendus: true,
+    });
   });
 
   test('code inconnu (404) → message d’erreur', async () => {
