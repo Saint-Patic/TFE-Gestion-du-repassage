@@ -290,3 +290,41 @@ describe('Autorisation par rôle sur les routes clients (US #115)', () => {
     });
   });
 });
+
+describe('GET /api/clients/code-barre/:code (US #150)', () => {
+  const clientRow = {
+    id_client: '1', nom: 'Dupont', prenom: 'Marie', telephone: '0470',
+    email: null, code_barre: 'K7QF2M9X', date_creation: 'x',
+  };
+
+  test('sans jeton → 401', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 0, rows: [] }) });
+    const res = await request(app).get('/api/clients/code-barre/K7QF2M9X');
+    expect(res.status).toBe(401);
+  });
+
+  test('code connu → 200 + client', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 1, rows: [clientRow] }) });
+    const res = await request(app)
+      .get('/api/clients/code-barre/K7QF2M9X')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.code_barre).toBe('K7QF2M9X');
+  });
+
+  test('code inconnu → 404', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 0, rows: [] }) });
+    const res = await request(app)
+      .get('/api/clients/code-barre/ZZZ')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test('repasseuse autorisée → 200 (pas 403)', async () => {
+    const app = creerApp({ query: async () => ({ rowCount: 1, rows: [clientRow] }) });
+    const res = await request(app)
+      .get('/api/clients/code-barre/K7QF2M9X')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+  });
+});
