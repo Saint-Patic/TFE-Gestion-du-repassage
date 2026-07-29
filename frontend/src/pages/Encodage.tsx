@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { rechercherClientParCodeBarre, creerCommande, placerEmplacements } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { ErreurApi } from '../api/client';
 import type { Client, Emplacement } from '../api/types';
+import { PlacementMannes } from '../composants/PlacementMannes';
 
 type Phase = 'reception' | 'placement';
 
@@ -18,36 +19,19 @@ export function Encodage() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
 
-  // Phase placement.
   const [emplacements, setEmplacements] = useState<Emplacement[]>([]);
   const [commande, setCommande] = useState<{ id_commande: string; nombre_mannes: number } | null>(null);
-  const [scans, setScans] = useState<Emplacement[]>([]); // pile ordonnée : un élément par manne
   const champScan = useRef<HTMLInputElement>(null);
-  const champPlacement = useRef<HTMLInputElement>(null);
 
   // Préchargement des 42 emplacements (une fois) pour valider les scans côté client.
   useEffect(() => {
     listerEmplacements().then(setEmplacements).catch(() => {});
   }, []);
 
-  // Auto-focus selon la phase.
+  // Auto-focus du champ scan client en phase réception.
   useEffect(() => {
     if (phase === 'reception' && !client) champScan.current?.focus();
-    if (phase === 'placement') champPlacement.current?.focus();
   }, [phase, client]);
-
-  const reste = commande ? commande.nombre_mannes - scans.length : 0;
-
-  // Agrège la pile de scans en lignes { emplacement, nombre_mannes }.
-  const lignes = useMemo(() => {
-    const compte = new Map<string, { emp: Emplacement; n: number }>();
-    for (const emp of scans) {
-      const existant = compte.get(emp.id_emplacement) || { emp, n: 0 };
-      existant.n += 1;
-      compte.set(emp.id_emplacement, existant);
-    }
-    return [...compte.values()];
-  }, [scans]);
 
   async function rechercher(e: FormEvent) {
     e.preventDefault();
@@ -83,7 +67,6 @@ export function Encodage() {
         cintres_entr_rendus: cintresEntrRendus,
       });
       setCommande({ id_commande: cmd.id_commande, nombre_mannes: cmd.nombre_mannes });
-      setScans([]);
       setCode('');
       setPhase('placement');
     } catch {
@@ -91,43 +74,17 @@ export function Encodage() {
     }
   }
 
-  function scannerEmplacement(e: FormEvent) {
-    e.preventDefault();
-    setErreur(null);
-    const valeur = code.trim();
-    setCode('');
-    if (reste <= 0) {
-      setErreur('Toutes les mannes sont placées.');
-      return;
-    }
-    const emp = emplacements.find((x) => x.code_barre === valeur);
-    if (!emp) {
-      setErreur('Emplacement inconnu.');
-      return;
-    }
-    setScans((s) => [...s, emp]);
-  }
-
-  function annulerDernier() {
-    setErreur(null);
-    setScans((s) => s.slice(0, -1));
-  }
-
-  async function terminer() {
-    if (!commande || reste !== 0) return;
+  async function terminerPlacement(lignes: { id_emplacement: string; nombre_mannes: number }[]) {
+    if (!commande) return;
     setErreur(null);
     try {
-      await placerEmplacements(
-        commande.id_commande,
-        lignes.map((l) => ({ id_emplacement: l.emp.id_emplacement, nombre_mannes: l.n }))
-      );
+      await placerEmplacements(commande.id_commande, lignes);
       setSucces(
         `Réception localisée : ${client?.prenom} ${client?.nom} — ${commande.nombre_mannes} manne(s).`
       );
       // Réinitialisation complète vers la réception.
       setPhase('reception');
       setCommande(null);
-      setScans([]);
       setClient(null);
       setCode('');
       setMannes('1');
@@ -174,27 +131,15 @@ export function Encodage() {
                 onChange={(e) => setMannes(e.target.value)}
               />
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={prioritaire}
-                  onChange={(e) => setPrioritaire(e.target.checked)}
-                />
+                <input type="checkbox" checked={prioritaire} onChange={(e) => setPrioritaire(e.target.checked)} />
                 Prioritaire
               </label>
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={cintresClient}
-                  onChange={(e) => setCintresClient(e.target.checked)}
-                />
+                <input type="checkbox" checked={cintresClient} onChange={(e) => setCintresClient(e.target.checked)} />
                 Cintres client
               </label>
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={cintresEntrRendus}
-                  onChange={(e) => setCintresEntrRendus(e.target.checked)}
-                />
+                <input type="checkbox" checked={cintresEntrRendus} onChange={(e) => setCintresEntrRendus(e.target.checked)} />
                 Cintres entreprise rendus
               </label>
               <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
@@ -206,52 +151,11 @@ export function Encodage() {
       )}
 
       {phase === 'placement' && commande && (
-        <div className="flex flex-col gap-3 rounded border p-3">
-          <p className="font-semibold">
-            Placer les {commande.nombre_mannes} mannes — reste {reste}
-          </p>
-
-          <form onSubmit={scannerEmplacement} className="flex flex-col gap-2">
-            <label htmlFor="placement" className="font-semibold">Scanner l’emplacement</label>
-            <input
-              id="placement"
-              ref={champPlacement}
-              className="rounded border p-2"
-              placeholder="Code emplacement"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-            />
-          </form>
-
-          {lignes.length > 0 && (
-            <ul className="flex flex-col gap-1">
-              {lignes.map((l) => (
-                <li key={l.emp.id_emplacement}>
-                  {l.emp.code_barre} ×{l.n}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={annulerDernier}
-              disabled={scans.length === 0}
-              className="rounded border px-3 py-2 disabled:opacity-50"
-            >
-              Annuler le dernier scan
-            </button>
-            <button
-              type="button"
-              onClick={terminer}
-              disabled={reste !== 0}
-              className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
-            >
-              Terminer
-            </button>
-          </div>
-        </div>
+        <PlacementMannes
+          nombreMannes={commande.nombre_mannes}
+          emplacements={emplacements}
+          onTerminer={terminerPlacement}
+        />
       )}
     </div>
   );
