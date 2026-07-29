@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { rechercherClientParCodeBarre, creerCommande } from './commandes';
+import { rechercherClientParCodeBarre, creerCommande, placerEmplacements } from './commandes';
 import { definirFournisseurJeton } from './client';
 
 beforeEach(() => {
@@ -35,5 +35,17 @@ describe('creerCommande', () => {
     expect(url).toBe('/api/commandes');
     expect(options.method).toBe('POST');
     expect(r.statut).toBe('a_faire');
+  });
+});
+
+describe('placerEmplacements', () => {
+  test('POST /api/commandes/:id/emplacements avec la répartition', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await placerEmplacements('cmd1', [{ id_emplacement: 'e1', nombre_mannes: 2 }]);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/commandes/cmd1/emplacements');
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({ emplacements: [{ id_emplacement: 'e1', nombre_mannes: 2 }] });
   });
 });
