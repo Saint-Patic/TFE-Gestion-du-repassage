@@ -3,10 +3,19 @@ const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
 
 // Valide le corps d'une commande à la réception. Renvoie un message ou null.
-function validerCommande({ id_client, nombre_mannes }) {
+function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
   if (!id_client || typeof id_client !== 'string') return 'id_client est requis.';
   if (!Number.isInteger(nombre_mannes) || nombre_mannes < 1) {
     return 'nombre_mannes doit être un entier ≥ 1.';
+  }
+  for (const [nom, valeur] of [
+    ['prioritaire', prioritaire],
+    ['cintres_client', cintres_client],
+    ['cintres_entr_rendus', cintres_entr_rendus],
+  ]) {
+    if (valeur !== undefined && typeof valeur !== 'boolean') {
+      return `${nom} doit être un booléen.`;
+    }
   }
   return null;
 }
@@ -31,17 +40,17 @@ function validerEmplacements(emplacements) {
 function creerRouteurCommandes(pool) {
   const routeur = express.Router();
 
-  // Crée une commande (réception) : client + nombre de mannes. Accès gérante + repasseuse.
+  // Crée une commande (réception) : client + nombre de mannes + flags. Accès gérante + repasseuse.
   routeur.post('/', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
-    const { id_client, nombre_mannes } = req.body || {};
-    const erreur = validerCommande({ id_client, nombre_mannes });
+    const { id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus } = req.body || {};
+    const erreur = validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
     if (erreur) return res.status(400).json({ message: erreur });
     try {
       const resultat = await pool.query(
-        `INSERT INTO commande (id_client, nombre_mannes)
-         VALUES ($1, $2)
-         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, date_reception`,
-        [id_client, nombre_mannes]
+        `INSERT INTO commande (id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception`,
+        [id_client, nombre_mannes, Boolean(prioritaire), Boolean(cintres_client), Boolean(cintres_entr_rendus)]
       );
       return res.status(201).json(resultat.rows[0]);
     } catch (err) {
