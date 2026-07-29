@@ -77,6 +77,55 @@ describe('POST /api/commandes (US #150)', () => {
   });
 });
 
+describe('POST /api/commandes — flags cintres/prioritaire (US #170)', () => {
+  // Faux pool qui capture les paramètres passés à l'INSERT.
+  function poolCapture() {
+    const appels = [];
+    const pool = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        return { rows: [commandeCreee] };
+      },
+    };
+    return { pool, appels };
+  }
+
+  test('sans flags → 201 et INSERT reçoit false, false, false', async () => {
+    const { pool, appels } = poolCapture();
+    const res = await request(creerApp(pool))
+      .post('/api/commandes')
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({ id_client: UUID_CLIENT, nombre_mannes: 3 });
+    expect(res.status).toBe(201);
+    // params = [id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus]
+    expect(appels[0].params.slice(2)).toEqual([false, false, false]);
+  });
+
+  test('avec les 3 flags à true → INSERT reçoit true, true, true', async () => {
+    const { pool, appels } = poolCapture();
+    const res = await request(creerApp(pool))
+      .post('/api/commandes')
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({
+        id_client: UUID_CLIENT, nombre_mannes: 3,
+        prioritaire: true, cintres_client: true, cintres_entr_rendus: true,
+      });
+    expect(res.status).toBe(201);
+    expect(appels[0].params.slice(2)).toEqual([true, true, true]);
+  });
+
+  test('flag non booléen (prioritaire: "oui") → 400 sans accès DB', async () => {
+    let requetesDB = 0;
+    const app = creerApp({ query: async () => { requetesDB++; return { rows: [commandeCreee] }; } });
+    const res = await request(app)
+      .post('/api/commandes')
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({ id_client: UUID_CLIENT, nombre_mannes: 3, prioritaire: 'oui' });
+    expect(res.status).toBe(400);
+    expect(requetesDB).toBe(0);
+  });
+});
+
 // Faux client transactionnel pour POST /:id/emplacements.
 // options : { mannesCommande: number|null, erreurInsert?: string }
 function fauxPoolTransaction(options) {
