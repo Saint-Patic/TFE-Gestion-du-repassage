@@ -36,3 +36,11 @@ export type Commande = {
   prioritaire: boolean;
   date_reception: string;
 };
+
+export type Emplacement = {
+  id_emplacement: string;
+  code_barre: string;
+  etagere: string;
+  niveau: number;
+  position: string;
+};

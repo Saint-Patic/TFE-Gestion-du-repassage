@@ -15,3 +15,14 @@ export function creerCommande(
     body: JSON.stringify(donnees),
   });
 }
+
+// Enregistre la répartition des mannes d'une commande sur les emplacements scannés.
+export function placerEmplacements(
+  idCommande: string,
+  lignes: { id_emplacement: string; nombre_mannes: number }[]
+): Promise<void> {
+  return requeteApi<void>(`/commandes/${encodeURIComponent(idCommande)}/emplacements`, {
+    method: 'POST',
+    body: JSON.stringify({ emplacements: lignes }),
+  });
+}
