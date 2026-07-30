@@ -27,6 +27,9 @@ function initialiserTempsReel(serveurHttp) {
   });
 
   io.on('connection', (socket) => {
+    // Rooms de ciblage : la personne (attribution) et son rôle (gérante = tout).
+    socket.join('utilisateur:' + socket.utilisateur.id_utilisateur);
+    socket.join('role:' + socket.utilisateur.role);
     console.log(`Socket connecté : ${socket.utilisateur.id_utilisateur}`);
     socket.on('disconnect', () => {
       console.log(`Socket déconnecté : ${socket.utilisateur.id_utilisateur}`);
@@ -44,4 +47,12 @@ function diffuser(evenement, donnees) {
   io.emit(evenement, donnees);
 }
 
-module.exports = { initialiserTempsReel, diffuser };
+// Diffuse un événement vers une ou plusieurs rooms.
+function diffuserA(rooms, evenement, donnees) {
+  if (!io) {
+    throw new Error("Socket.IO non initialisé : appeler initialiserTempsReel d'abord.");
+  }
+  io.to(rooms).emit(evenement, donnees);
+}
+
+module.exports = { initialiserTempsReel, diffuser, diffuserA };

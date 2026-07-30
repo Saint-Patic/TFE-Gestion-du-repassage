@@ -1,7 +1,7 @@
 const http = require('http');
 const { io: clientIo } = require('socket.io-client');
 const creerApp = require('./app');
-const { initialiserTempsReel, diffuser } = require('./temps-reel');
+const { initialiserTempsReel, diffuser, diffuserA } = require('./temps-reel');
 const { signerJeton } = require('./auth/jeton');
 
 let serveur;
@@ -14,6 +14,14 @@ function jetonValide() {
   return signerJeton({
     id_utilisateur: 'u-1',
     role: 'gerante',
+    session_debut: Math.floor(Date.now() / 1000),
+  });
+}
+
+function jetonRepasseuse() {
+  return signerJeton({
+    id_utilisateur: 'u-2',
+    role: 'repasseuse',
     session_debut: Math.floor(Date.now() / 1000),
   });
 }
@@ -80,4 +88,32 @@ test('un client authentifié reçoit un événement diffusé', (done) => {
     client.close();
     done(err);
   });
+});
+
+test('diffuserA atteint la room de l’utilisateur ciblé', (done) => {
+  const client = connecter({ jeton: jetonRepasseuse() }); // u-2
+  client.on('connect', () => {
+    client.on('commandes:maj', (donnees) => {
+      expect(donnees).toEqual({ ok: 1 });
+      client.close();
+      done();
+    });
+    setTimeout(() => diffuserA(['utilisateur:u-2'], 'commandes:maj', { ok: 1 }), 60);
+  });
+  client.on('connect_error', (err) => { client.close(); done(err); });
+});
+
+test('diffuserA n’atteint pas un client hors room ciblée', (done) => {
+  const client = connecter({ jeton: jetonRepasseuse() }); // u-2, repasseuse
+  client.on('connect', () => {
+    client.on('commandes:maj', () => {
+      client.close();
+      done(new Error('ne devrait pas recevoir'));
+    });
+    setTimeout(() => {
+      diffuserA(['role:gerante'], 'commandes:maj', { ok: 1 }); // pas sa room
+      setTimeout(() => { client.close(); done(); }, 150);
+    }, 60);
+  });
+  client.on('connect_error', (err) => { client.close(); done(err); });
 });
