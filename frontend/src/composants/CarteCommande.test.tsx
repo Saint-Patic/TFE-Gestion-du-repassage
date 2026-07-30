@@ -28,4 +28,14 @@ describe('CarteCommande', () => {
     render(<CarteCommande commande={{ ...base, statut: 'en_cours' }} onModifier={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Modifier' })).not.toBeInTheDocument();
   });
+
+  test('commande prioritaire → carte surlignée en rouge', () => {
+    const { container } = render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} />);
+    expect(container.querySelector('.border-red-500')).toBeTruthy();
+  });
+
+  test('commande non prioritaire → pas de surlignage rouge', () => {
+    const { container } = render(<CarteCommande commande={{ ...base, prioritaire: false, statut: 'a_faire' }} />);
+    expect(container.querySelector('.border-red-500')).toBeFalsy();
+  });
 });
