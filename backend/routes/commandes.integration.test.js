@@ -395,4 +395,22 @@ describe('PUT /api/commandes/:id (US #180)', () => {
       .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2 });
     expect(res.status).toBe(404);
   });
+
+  test('diffuse commandes:maj sur succès (US #200)', async () => {
+    const spy = jest.fn();
+    const app = creerApp(poolPut({ updateRowCount: 1, updateRow: { ...majOk, id_repasseuse: UUID_REPASSEUSE }, selectRows: [] }), spy);
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 4 });
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+
+  test('ne diffuse pas sur 409 (US #200)', async () => {
+    const spy = jest.fn();
+    const app = creerApp(poolPut({ updateRowCount: 0, updateRow: null, selectRows: [{ statut: 'en_cours' }] }), spy);
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2 });
+    expect(res.status).toBe(409);
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
