@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 export function Accueil() {
   const { utilisateur } = useAuth();
   const estGerante = utilisateur?.role === 'gerante';
+  const estRepasseuse = utilisateur?.role === 'repasseuse';
 
   return (
     <div className="flex flex-col items-start gap-3">
@@ -21,6 +22,14 @@ export function Accueil() {
       >
         Tableau des commandes
       </Link>
+      {estRepasseuse && (
+        <Link
+          to="/reorganisation"
+          className="inline-block rounded bg-blue-600 px-4 py-2 text-white"
+        >
+          Réorganiser les emplacements
+        </Link>
+      )}
       {estGerante && (
         <>
           <Link
