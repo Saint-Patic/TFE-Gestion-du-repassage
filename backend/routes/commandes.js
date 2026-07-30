@@ -177,10 +177,13 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         `UPDATE commande
          SET prioritaire = $2, cintres_client = $3, cintres_entr_rendus = $4, nombre_mannes = $5
          WHERE id_commande = $1 AND statut = 'a_faire'
-         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception`,
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse`,
         [req.params.id, Boolean(prioritaire), Boolean(cintres_client), Boolean(cintres_entr_rendus), nombre_mannes]
       );
-      if (maj.rowCount === 1) return res.json(maj.rows[0]);
+      if (maj.rowCount === 1) {
+        diffuserMaj(maj.rows[0].id_repasseuse);
+        return res.json(maj.rows[0]);
+      }
       // Rien mis à jour : distinguer 404 (absente) de 409 (existe mais pas « à faire »).
       const existe = await pool.query('SELECT statut FROM commande WHERE id_commande = $1', [req.params.id]);
       if (existe.rowCount === 0) return res.status(404).json({ message: 'Commande introuvable.' });
