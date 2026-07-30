@@ -1,5 +1,5 @@
 import { requeteApi } from './client';
-import type { Client, Commande } from './types';
+import type { Client, Commande, CommandeCarte } from './types';
 
 // Recherche un client par son code-barres (encodage d'une réception).
 export function rechercherClientParCodeBarre(code: string): Promise<Client> {
@@ -30,5 +30,26 @@ export function placerEmplacements(
   return requeteApi<void>(`/commandes/${encodeURIComponent(idCommande)}/emplacements`, {
     method: 'POST',
     body: JSON.stringify({ emplacements: lignes }),
+  });
+}
+
+// Liste les commandes du pipeline actif (avec nom du client) pour le tableau.
+export function listerCommandes(): Promise<CommandeCarte[]> {
+  return requeteApi<CommandeCarte[]>('/commandes');
+}
+
+// Modifie les scalaires d'une commande « à faire » (flags + nombre de mannes).
+export function modifierCommande(
+  id: string,
+  donnees: {
+    nombre_mannes: number;
+    prioritaire?: boolean;
+    cintres_client?: boolean;
+    cintres_entr_rendus?: boolean;
+  }
+): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(donnees),
   });
 }

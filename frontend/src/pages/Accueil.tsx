@@ -15,6 +15,12 @@ export function Accueil() {
       >
         Encodage / Réception
       </Link>
+      <Link
+        to="/tableau"
+        className="inline-block rounded bg-blue-600 px-4 py-2 text-white"
+      >
+        Tableau des commandes
+      </Link>
       {estGerante && (
         <>
           <Link

@@ -39,6 +39,11 @@ export type Commande = {
   date_reception: string;
 };
 
+export type CommandeCarte = Commande & {
+  client_nom: string;
+  client_prenom: string;
+};
+
 export type Emplacement = {
   id_emplacement: string;
   code_barre: string;
