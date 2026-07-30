@@ -154,6 +154,7 @@ export function Encodage() {
         <PlacementMannes
           nombreMannes={commande.nombre_mannes}
           emplacements={emplacements}
+          idClient={client?.id_client ?? ''}
           onTerminer={terminerPlacement}
         />
       )}

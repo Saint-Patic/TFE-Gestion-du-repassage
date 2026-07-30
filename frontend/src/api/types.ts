@@ -47,7 +47,20 @@ export type CommandeCarte = Commande & {
 export type Emplacement = {
   id_emplacement: string;
   code_barre: string;
-  etagere: string;
-  niveau: number;
-  position: string;
+  etagere: string | null;
+  niveau: number | null;
+  position: string | null;
+  est_au_sol?: boolean;
+  id_client_occupant?: string | null;
+  client_nom_occupant?: string | null;
+  client_prenom_occupant?: string | null;
+};
+
+export type ContenuEmplacement = {
+  id_commande: string;
+  nombre_mannes: number;
+  statut: Commande['statut'];
+  id_client: string;
+  client_nom: string;
+  client_prenom: string;
 };
