@@ -42,20 +42,30 @@ function validerEmplacements(emplacements) {
 }
 
 // Fabrique : routeur commandes alimenté par le pool pg fourni.
-function creerRouteurCommandes(pool) {
+// diffuserMaj(idRepasseuse) : notifie le temps réel (défaut no-op → testable sans Socket.IO).
+function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
   const routeur = express.Router();
 
-  // Liste les commandes du pipeline actif avec le nom du client. Accès gérante + repasseuse.
+  // Liste les commandes du Kanban avec le nom du client. Repasseuse → seulement les siennes ;
+  // gérante → tout. Colonnes : pipeline actif + Récupéré du jour. Accès gérante + repasseuse.
   routeur.get('/', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
     try {
+      const params = [];
+      let filtreRepasseuse = '';
+      if (req.utilisateur.role === 'repasseuse') {
+        params.push(req.utilisateur.id_utilisateur);
+        filtreRepasseuse = ` AND c.id_repasseuse = $${params.length}`;
+      }
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
-                c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.date_reception,
+                c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.date_reception, c.id_repasseuse,
                 cl.nom AS client_nom, cl.prenom AS client_prenom
          FROM commande c
          JOIN client cl ON cl.id_client = c.id_client
-         WHERE c.statut IN ('a_faire', 'en_cours', 'fait')
-         ORDER BY c.date_reception ASC`
+         WHERE ( c.statut IN ('a_faire', 'en_cours', 'fait')
+                 OR (c.statut = 'recupere' AND c.date_recuperation::date = CURRENT_DATE) )${filtreRepasseuse}
+         ORDER BY c.date_reception ASC`,
+        params
       );
       return res.json(resultat.rows);
     } catch {
@@ -70,11 +80,12 @@ function creerRouteurCommandes(pool) {
     if (erreur) return res.status(400).json({ message: erreur });
     try {
       const resultat = await pool.query(
-        `INSERT INTO commande (id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception`,
-        [id_client, nombre_mannes, Boolean(prioritaire), Boolean(cintres_client), Boolean(cintres_entr_rendus)]
+        `INSERT INTO commande (id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, id_repasseuse)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse`,
+        [id_client, nombre_mannes, Boolean(prioritaire), Boolean(cintres_client), Boolean(cintres_entr_rendus), req.utilisateur.id_utilisateur]
       );
+      diffuserMaj(resultat.rows[0].id_repasseuse);
       return res.status(201).json(resultat.rows[0]);
     } catch (err) {
       if (err.code === '23503') {
@@ -166,10 +177,13 @@ function creerRouteurCommandes(pool) {
         `UPDATE commande
          SET prioritaire = $2, cintres_client = $3, cintres_entr_rendus = $4, nombre_mannes = $5
          WHERE id_commande = $1 AND statut = 'a_faire'
-         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception`,
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse`,
         [req.params.id, Boolean(prioritaire), Boolean(cintres_client), Boolean(cintres_entr_rendus), nombre_mannes]
       );
-      if (maj.rowCount === 1) return res.json(maj.rows[0]);
+      if (maj.rowCount === 1) {
+        diffuserMaj(maj.rows[0].id_repasseuse);
+        return res.json(maj.rows[0]);
+      }
       // Rien mis à jour : distinguer 404 (absente) de 409 (existe mais pas « à faire »).
       const existe = await pool.query('SELECT statut FROM commande WHERE id_commande = $1', [req.params.id]);
       if (existe.rowCount === 0) return res.status(404).json({ message: 'Commande introuvable.' });

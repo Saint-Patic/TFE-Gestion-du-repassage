@@ -75,6 +75,30 @@ describe('POST /api/commandes (US #150)', () => {
       .send({ id_client: UUID_CLIENT, nombre_mannes: 3 });
     expect(res.status).toBe(400);
   });
+
+  test('estampille id_repasseuse = utilisateur du jeton (US #200)', async () => {
+    const appels = [];
+    const pool = { query: async (sql, params) => { appels.push({ sql, params }); return { rows: [commandeCreee] }; } };
+    const res = await request(creerApp(pool))
+      .post('/api/commandes')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ id_client: UUID_CLIENT, nombre_mannes: 3 });
+    expect(res.status).toBe(201);
+    // params = [id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, id_repasseuse]
+    expect(appels[0].params[5]).toBe(UUID_REPASSEUSE);
+  });
+
+  test('diffuse commandes:maj à l’encodeuse (US #200)', async () => {
+    const spy = jest.fn();
+    const ligne = { ...commandeCreee, id_repasseuse: UUID_REPASSEUSE };
+    const app = creerApp({ query: async () => ({ rows: [ligne] }) }, spy);
+    const res = await request(app)
+      .post('/api/commandes')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ id_client: UUID_CLIENT, nombre_mannes: 3 });
+    expect(res.status).toBe(201);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
 });
 
 describe('POST /api/commandes — flags cintres/prioritaire (US #170)', () => {
@@ -98,7 +122,7 @@ describe('POST /api/commandes — flags cintres/prioritaire (US #170)', () => {
       .send({ id_client: UUID_CLIENT, nombre_mannes: 3 });
     expect(res.status).toBe(201);
     // params = [id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus]
-    expect(appels[0].params.slice(2)).toEqual([false, false, false]);
+    expect(appels[0].params.slice(2, 5)).toEqual([false, false, false]);
   });
 
   test('avec les 3 flags à true → INSERT reçoit true, true, true', async () => {
@@ -111,7 +135,7 @@ describe('POST /api/commandes — flags cintres/prioritaire (US #170)', () => {
         prioritaire: true, cintres_client: true, cintres_entr_rendus: true,
       });
     expect(res.status).toBe(201);
-    expect(appels[0].params.slice(2)).toEqual([true, true, true]);
+    expect(appels[0].params.slice(2, 5)).toEqual([true, true, true]);
   });
 
   test('flag non booléen (prioritaire: "oui") → 400 sans accès DB', async () => {
@@ -283,6 +307,25 @@ describe('GET /api/commandes (US #180)', () => {
     const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonRepasseuse()}`);
     expect(res.status).toBe(200);
   });
+
+  test('repasseuse → requête filtrée par id_repasseuse (US #200)', async () => {
+    let sqlVue = '', paramsVus = null;
+    const app = creerApp({ query: async (sql, params) => { sqlVue = sql; paramsVus = params; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/id_repasseuse = \$1/);
+    expect(paramsVus).toEqual([UUID_REPASSEUSE]);
+  });
+
+  test('gérante → requête non filtrée + Récupéré du jour (US #200)', async () => {
+    let sqlVue = '', paramsVus = null;
+    const app = creerApp({ query: async (sql, params) => { sqlVue = sql; paramsVus = params; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).not.toMatch(/id_repasseuse = \$/);
+    expect(sqlVue).toMatch(/CURRENT_DATE/);
+    expect(paramsVus).toEqual([]);
+  });
 });
 
 describe('PUT /api/commandes/:id (US #180)', () => {
@@ -351,5 +394,23 @@ describe('PUT /api/commandes/:id (US #180)', () => {
     const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
       .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2 });
     expect(res.status).toBe(404);
+  });
+
+  test('diffuse commandes:maj sur succès (US #200)', async () => {
+    const spy = jest.fn();
+    const app = creerApp(poolPut({ updateRowCount: 1, updateRow: { ...majOk, id_repasseuse: UUID_REPASSEUSE }, selectRows: [] }), spy);
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 4 });
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+
+  test('ne diffuse pas sur 409 (US #200)', async () => {
+    const spy = jest.fn();
+    const app = creerApp(poolPut({ updateRowCount: 0, updateRow: null, selectRows: [{ statut: 'en_cours' }] }), spy);
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ nombre_mannes: 2 });
+    expect(res.status).toBe(409);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

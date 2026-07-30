@@ -8,7 +8,7 @@ type Props = {
 // Carte d'une commande dans le tableau. « Modifier » réservé au statut « à faire ».
 export function CarteCommande({ commande, onModifier }: Props) {
   return (
-    <div className="flex flex-col gap-1 rounded border p-2">
+    <div className={`flex flex-col gap-1 rounded border p-2 ${commande.prioritaire ? 'border-red-500 bg-red-50' : ''}`}>
       <span className="font-semibold">{commande.client_prenom} {commande.client_nom}</span>
       <span>{commande.nombre_mannes} manne(s)</span>
       <span className="flex flex-wrap gap-1">

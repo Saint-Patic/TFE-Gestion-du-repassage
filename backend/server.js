@@ -8,7 +8,7 @@ if (!process.env.JWT_SECRET) {
 const http = require('http');
 const { Pool } = require('pg');
 const creerApp = require('./app');
-const { initialiserTempsReel } = require('./temps-reel');
+const { initialiserTempsReel, diffuserA } = require('./temps-reel');
 
 const port = process.env.PORT || 3000;
 
@@ -20,7 +20,10 @@ const pool = new Pool({
   database: process.env.DB_NAME,
 });
 
-const app = creerApp(pool);
+// Diffuse une mise à jour de commande à son encodeuse + à toutes les gérantes.
+const diffuserMaj = (idRepasseuse) =>
+  diffuserA(['utilisateur:' + idRepasseuse, 'role:gerante'], 'commandes:maj', {});
+const app = creerApp(pool, diffuserMaj);
 const serveur = http.createServer(app);
 initialiserTempsReel(serveur);
 
