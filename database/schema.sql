@@ -35,12 +35,15 @@ CREATE TABLE client (
 -- Table : Emplacement
 -- Étagères A, B, C, D (3 positions/niveau) et E (2 positions/niveau)
 -- ============================================================
+-- Le sol (est_au_sol = TRUE) est un débordement partagé sans étagère/niveau/position :
+-- ces trois colonnes sont donc nullables et les CHECK tolèrent le sol.
 CREATE TABLE emplacement (
     id_emplacement   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code_barre       VARCHAR(50) NOT NULL UNIQUE,
-    etagere          CHAR(1) NOT NULL CHECK (etagere IN ('A','B','C','D','E')),
-    niveau           SMALLINT NOT NULL CHECK (niveau BETWEEN 1 AND 3),
-    position         VARCHAR(10) NOT NULL CHECK (position IN ('gauche','centre','droite')),
+    est_au_sol       BOOLEAN NOT NULL DEFAULT FALSE,
+    etagere          CHAR(1)     CHECK (est_au_sol OR etagere IN ('A','B','C','D','E')),
+    niveau           SMALLINT    CHECK (est_au_sol OR niveau BETWEEN 1 AND 3),
+    position         VARCHAR(10) CHECK (est_au_sol OR position IN ('gauche','centre','droite')),
     UNIQUE (etagere, niveau, position)
 );
 

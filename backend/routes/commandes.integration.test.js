@@ -127,15 +127,18 @@ describe('POST /api/commandes — flags cintres/prioritaire (US #170)', () => {
 });
 
 // Faux client transactionnel pour POST /:id/emplacements.
-// options : { mannesCommande: number|null, erreurInsert?: string }
+// options : { mannesCommande: number|null, idClient='cl1', conflitAutreClient=false, erreurInsert? }
 function fauxPoolTransaction(options) {
   const client = {
     query: async (sql) => {
       if (/^\s*(BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return {};
-      if (/SELECT nombre_mannes FROM commande/i.test(sql)) {
+      if (/SELECT nombre_mannes.*FROM commande/i.test(sql)) {
         return options.mannesCommande == null
           ? { rowCount: 0, rows: [] }
-          : { rowCount: 1, rows: [{ nombre_mannes: options.mannesCommande }] };
+          : { rowCount: 1, rows: [{ nombre_mannes: options.mannesCommande, id_client: options.idClient || 'cl1' }] };
+      }
+      if (/id_client <> \$3/i.test(sql)) {
+        return { rowCount: options.conflitAutreClient ? 1 : 0, rows: [] };
       }
       if (/DELETE FROM commande_emplacement/i.test(sql)) return { rowCount: 0 };
       if (/INSERT INTO commande_emplacement/i.test(sql)) {
@@ -233,6 +236,24 @@ describe('POST /api/commandes/:id/emplacements (US #160)', () => {
       .set('Authorization', `Bearer ${jetonGerante()}`)
       .send({ emplacements: lignesValides });
     expect(res.status).toBe(400);
+  });
+
+  test('étagère cible occupée par un autre client → 409 (US #190)', async () => {
+    const app = creerApp(fauxPoolTransaction({ mannesCommande: 3, conflitAutreClient: true }));
+    const res = await request(app)
+      .post(`/api/commandes/${UUID_CMD}/emplacements`)
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(409);
+  });
+
+  test('étagère du même client / re-placement / sol → 201 (US #190)', async () => {
+    const app = creerApp(fauxPoolTransaction({ mannesCommande: 3, conflitAutreClient: false }));
+    const res = await request(app)
+      .post(`/api/commandes/${UUID_CMD}/emplacements`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(201);
   });
 });
 

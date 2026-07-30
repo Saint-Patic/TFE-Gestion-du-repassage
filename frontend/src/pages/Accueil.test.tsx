@@ -23,4 +23,14 @@ describe('Accueil — liens clients selon le rôle', () => {
     expect(screen.queryByText('Créer un profil client')).not.toBeInTheDocument();
     expect(screen.queryByText('Gérer les clients')).not.toBeInTheDocument();
   });
+
+  test('repasseuse → voit le lien Réorganiser', () => {
+    rendreAvecRole('repasseuse');
+    expect(screen.getByText('Réorganiser les emplacements')).toBeInTheDocument();
+  });
+
+  test('gérante → ne voit pas le lien Réorganiser', () => {
+    rendreAvecRole('gerante');
+    expect(screen.queryByText('Réorganiser les emplacements')).not.toBeInTheDocument();
+  });
 });

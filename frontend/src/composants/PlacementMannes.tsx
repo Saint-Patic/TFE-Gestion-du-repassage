@@ -7,12 +7,13 @@ type Ligne = { id_emplacement: string; nombre_mannes: number };
 type Props = {
   nombreMannes: number;
   emplacements: Emplacement[];
+  idClient: string;
   onTerminer: (lignes: Ligne[]) => void | Promise<void>;
 };
 
-// Phase de placement : 1 scan = 1 manne, empilement, jusqu'à « reste 0 ».
-// Aucun appel réseau : remonte la répartition agrégée via onTerminer.
-export function PlacementMannes({ nombreMannes, emplacements, onTerminer }: Props) {
+// Phase de placement : 1 scan = 1 manne (ou bouton « Au sol »), empilement, jusqu'à « reste 0 ».
+// Refuse une étagère occupée par un autre client. Aucun appel réseau : remonte via onTerminer.
+export function PlacementMannes({ nombreMannes, emplacements, idClient, onTerminer }: Props) {
   const [code, setCode] = useState('');
   const [scans, setScans] = useState<Emplacement[]>([]); // pile ordonnée : un élément par manne
   const [erreur, setErreur] = useState<string | null>(null);
@@ -34,21 +35,39 @@ export function PlacementMannes({ nombreMannes, emplacements, onTerminer }: Prop
     return [...compte.values()];
   }, [scans]);
 
+  function placer(emp: Emplacement) {
+    if (reste <= 0) {
+      setErreur('Toutes les mannes sont placées.');
+      return;
+    }
+    if (!emp.est_au_sol && emp.id_client_occupant && emp.id_client_occupant !== idClient) {
+      setErreur('Emplacement occupé par un autre client.');
+      return;
+    }
+    setScans((s) => [...s, emp]);
+  }
+
   function scanner(e: FormEvent) {
     e.preventDefault();
     setErreur(null);
     const valeur = code.trim();
     setCode('');
-    if (reste <= 0) {
-      setErreur('Toutes les mannes sont placées.');
-      return;
-    }
     const emp = emplacements.find((x) => x.code_barre === valeur);
     if (!emp) {
       setErreur('Emplacement inconnu.');
       return;
     }
-    setScans((s) => [...s, emp]);
+    placer(emp);
+  }
+
+  function placerAuSol() {
+    setErreur(null);
+    const sol = emplacements.find((x) => x.est_au_sol);
+    if (!sol) {
+      setErreur('Emplacement « Au sol » indisponible.');
+      return;
+    }
+    placer(sol);
   }
 
   function annulerDernier() {
@@ -78,10 +97,14 @@ export function PlacementMannes({ nombreMannes, emplacements, onTerminer }: Prop
         />
       </form>
 
+      <button type="button" onClick={placerAuSol} className="self-start rounded border px-3 py-2">
+        Au sol
+      </button>
+
       {lignes.length > 0 && (
         <ul className="flex flex-col gap-1">
           {lignes.map((l) => (
-            <li key={l.emp.id_emplacement}>{l.emp.code_barre} ×{l.n}</li>
+            <li key={l.emp.id_emplacement}>{l.emp.est_au_sol ? 'Au sol' : l.emp.code_barre} ×{l.n}</li>
           ))}
         </ul>
       )}
