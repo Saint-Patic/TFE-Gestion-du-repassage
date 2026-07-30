@@ -5,6 +5,7 @@ import { NouveauClient } from './pages/NouveauClient';
 import { Clients } from './pages/Clients';
 import { Encodage } from './pages/Encodage';
 import { Tableau } from './pages/Tableau';
+import { Reorganisation } from './pages/Reorganisation';
 import { RouteProtegee } from './composants/RouteProtegee';
 import { RouteRole } from './composants/RouteRole';
 
@@ -15,6 +16,7 @@ export default function App() {
       <Route path="/" element={<RouteProtegee><Accueil /></RouteProtegee>} />
       <Route path="/encodage" element={<RouteProtegee><Encodage /></RouteProtegee>} />
       <Route path="/tableau" element={<RouteProtegee><Tableau /></RouteProtegee>} />
+      <Route path="/reorganisation" element={<RouteProtegee><RouteRole roles={['repasseuse']}><Reorganisation /></RouteRole></RouteProtegee>} />
       <Route path="/clients/nouveau" element={<RouteProtegee><RouteRole roles={['gerante']}><NouveauClient /></RouteRole></RouteProtegee>} />
       <Route path="/clients" element={<RouteProtegee><RouteRole roles={['gerante']}><Clients /></RouteRole></RouteProtegee>} />
     </Routes>
