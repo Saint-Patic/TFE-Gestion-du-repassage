@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listerCommandes } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
+import { obtenirSocket } from '../temps-reel/socket';
 import type { CommandeCarte, Emplacement } from '../api/types';
 import { CarteCommande } from '../composants/CarteCommande';
 import { ModaleModifierCommande } from '../composants/ModaleModifierCommande';
@@ -10,6 +11,7 @@ const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
   { statut: 'a_faire', titre: 'À faire' },
   { statut: 'en_cours', titre: 'En cours' },
   { statut: 'fait', titre: 'Fait' },
+  { statut: 'recupere', titre: 'Récupéré' },
 ];
 
 export function Tableau() {
@@ -22,6 +24,15 @@ export function Tableau() {
   useEffect(() => {
     listerEmplacements().then(setEmplacements).catch(() => {});
   }, []);
+
+  // Temps réel : refetch quand une commande concernée change.
+  useEffect(() => {
+    const socket = obtenirSocket();
+    if (!socket) return;
+    const handler = () => queryClient.invalidateQueries({ queryKey: ['commandes'] });
+    socket.on('commandes:maj', handler);
+    return () => { socket.off('commandes:maj', handler); };
+  }, [queryClient]);
 
   return (
     <div className="flex flex-col gap-3">
