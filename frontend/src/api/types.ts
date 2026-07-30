@@ -37,6 +37,7 @@ export type Commande = {
   cintres_client: boolean;
   cintres_entr_rendus: boolean;
   date_reception: string;
+  id_repasseuse?: string | null;
 };
 
 export type CommandeCarte = Commande & {
