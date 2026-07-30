@@ -6,12 +6,44 @@ const exigerRole = require('../middlewares/exiger-role');
 function creerRouteurEmplacements(pool) {
   const routeur = express.Router();
 
-  // Liste les 42 emplacements (préchargement de l'écran d'encodage). Deux rôles.
+  // Liste les emplacements (42 étagères + sol) avec le client occupant de chaque case.
+  // Sert au préchargement (validation instantanée des scans, placement et déplacement). Deux rôles.
   routeur.get('/', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
     try {
       const resultat = await pool.query(
-        `SELECT id_emplacement, code_barre, etagere, niveau, position
-         FROM emplacement ORDER BY etagere, niveau, position`
+        `SELECT e.id_emplacement, e.code_barre, e.etagere, e.niveau, e.position, e.est_au_sol,
+                occ.id_client AS id_client_occupant,
+                occ.nom       AS client_nom_occupant,
+                occ.prenom    AS client_prenom_occupant
+         FROM emplacement e
+         LEFT JOIN LATERAL (
+           SELECT cl.id_client, cl.nom, cl.prenom
+           FROM commande_emplacement ce
+           JOIN commande c  ON c.id_commande = ce.id_commande
+           JOIN client   cl ON cl.id_client  = c.id_client
+           WHERE ce.id_emplacement = e.id_emplacement
+           LIMIT 1
+         ) occ ON TRUE
+         ORDER BY e.est_au_sol, e.etagere, e.niveau, e.position`
+      );
+      res.json(resultat.rows);
+    } catch (err) {
+      res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
+  // Contenu d'un emplacement : commandes présentes + client. Réservé aux repasseuses (réorganisation).
+  routeur.get('/:id/contenu', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    try {
+      const resultat = await pool.query(
+        `SELECT ce.id_commande, ce.nombre_mannes, c.statut, c.id_client,
+                cl.nom AS client_nom, cl.prenom AS client_prenom
+         FROM commande_emplacement ce
+         JOIN commande c  ON c.id_commande = ce.id_commande
+         JOIN client   cl ON cl.id_client  = c.id_client
+         WHERE ce.id_emplacement = $1
+         ORDER BY cl.nom, cl.prenom`,
+        [req.params.id]
       );
       res.json(resultat.rows);
     } catch (err) {
