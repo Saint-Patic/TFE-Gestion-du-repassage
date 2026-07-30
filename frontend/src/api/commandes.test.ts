@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { rechercherClientParCodeBarre, creerCommande, placerEmplacements } from './commandes';
+import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande } from './commandes';
 import { definirFournisseurJeton } from './client';
 
 beforeEach(() => {
@@ -55,5 +55,40 @@ describe('placerEmplacements', () => {
     expect(url).toBe('/api/commandes/cmd1/emplacements');
     expect(options.method).toBe('POST');
     expect(JSON.parse(options.body)).toEqual({ emplacements: [{ id_emplacement: 'e1', nombre_mannes: 2 }] });
+  });
+});
+
+describe('listerCommandes', () => {
+  test('GET /api/commandes', async () => {
+    const data = [{
+      id_commande: 'c1', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 2,
+      prioritaire: false, cintres_client: false, cintres_entr_rendus: false,
+      date_reception: 'x', client_nom: 'Dupont', client_prenom: 'Marie',
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(data), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const r = await listerCommandes();
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/commandes');
+    expect(options.method ?? 'GET').toBe('GET');
+    expect(r[0].client_nom).toBe('Dupont');
+  });
+});
+
+describe('modifierCommande', () => {
+  test('PUT /api/commandes/:id avec les scalaires', async () => {
+    const maj = {
+      id_commande: 'c1', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 4,
+      prioritaire: true, cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(maj), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await modifierCommande('c1', { nombre_mannes: 4, prioritaire: true, cintres_client: false, cintres_entr_rendus: false });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/commandes/c1');
+    expect(options.method).toBe('PUT');
+    expect(JSON.parse(options.body)).toEqual({
+      nombre_mannes: 4, prioritaire: true, cintres_client: false, cintres_entr_rendus: false,
+    });
   });
 });

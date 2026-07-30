@@ -2,9 +2,8 @@ const express = require('express');
 const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
 
-// Valide le corps d'une commande à la réception. Renvoie un message ou null.
-function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
-  if (!id_client || typeof id_client !== 'string') return 'id_client est requis.';
+// Valide les champs scalaires d'une commande (mannes + flags). Renvoie un message ou null.
+function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
   if (!Number.isInteger(nombre_mannes) || nombre_mannes < 1) {
     return 'nombre_mannes doit être un entier ≥ 1.';
   }
@@ -18,6 +17,12 @@ function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client
     }
   }
   return null;
+}
+
+// Valide le corps d'une commande à la réception. Renvoie un message ou null.
+function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
+  if (!id_client || typeof id_client !== 'string') return 'id_client est requis.';
+  return validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
 }
 
 // Valide le corps de la répartition d'emplacements. Renvoie un message ou null.
@@ -39,6 +44,24 @@ function validerEmplacements(emplacements) {
 // Fabrique : routeur commandes alimenté par le pool pg fourni.
 function creerRouteurCommandes(pool) {
   const routeur = express.Router();
+
+  // Liste les commandes du pipeline actif avec le nom du client. Accès gérante + repasseuse.
+  routeur.get('/', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
+    try {
+      const resultat = await pool.query(
+        `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
+                c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.date_reception,
+                cl.nom AS client_nom, cl.prenom AS client_prenom
+         FROM commande c
+         JOIN client cl ON cl.id_client = c.id_client
+         WHERE c.statut IN ('a_faire', 'en_cours', 'fait')
+         ORDER BY c.date_reception ASC`
+      );
+      return res.json(resultat.rows);
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
 
   // Crée une commande (réception) : client + nombre de mannes + flags. Accès gérante + repasseuse.
   routeur.post('/', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
@@ -108,6 +131,29 @@ function creerRouteurCommandes(pool) {
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
       client.release();
+    }
+  });
+
+  // Modifie les scalaires d'une commande « à faire » (flags + nombre de mannes). Gérante + repasseuse.
+  routeur.put('/:id', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
+    const { prioritaire, cintres_client, cintres_entr_rendus, nombre_mannes } = req.body || {};
+    const erreur = validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
+    if (erreur) return res.status(400).json({ message: erreur });
+    try {
+      const maj = await pool.query(
+        `UPDATE commande
+         SET prioritaire = $2, cintres_client = $3, cintres_entr_rendus = $4, nombre_mannes = $5
+         WHERE id_commande = $1 AND statut = 'a_faire'
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception`,
+        [req.params.id, Boolean(prioritaire), Boolean(cintres_client), Boolean(cintres_entr_rendus), nombre_mannes]
+      );
+      if (maj.rowCount === 1) return res.json(maj.rows[0]);
+      // Rien mis à jour : distinguer 404 (absente) de 409 (existe mais pas « à faire »).
+      const existe = await pool.query('SELECT statut FROM commande WHERE id_commande = $1', [req.params.id]);
+      if (existe.rowCount === 0) return res.status(404).json({ message: 'Commande introuvable.' });
+      return res.status(409).json({ message: 'Seules les commandes à faire sont modifiables.' });
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
     }
   });
 
