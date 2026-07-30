@@ -92,7 +92,7 @@ export function ModaleModifierCommande({ commande, emplacements, onFerme, onEnre
         )}
 
         {phase === 'placement' && (
-          <PlacementMannes nombreMannes={nouveauN} emplacements={emplacements} onTerminer={terminerPlacement} />
+          <PlacementMannes nombreMannes={nouveauN} emplacements={emplacements} idClient={commande.id_client} onTerminer={terminerPlacement} />
         )}
       </div>
     </div>
