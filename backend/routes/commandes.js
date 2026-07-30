@@ -95,7 +95,7 @@ function creerRouteurCommandes(pool) {
       await client.query('BEGIN');
 
       const cmd = await client.query(
-        'SELECT nombre_mannes FROM commande WHERE id_commande = $1',
+        'SELECT nombre_mannes, id_client FROM commande WHERE id_commande = $1',
         [req.params.id]
       );
       if (cmd.rowCount === 0) {
@@ -110,6 +110,28 @@ function creerRouteurCommandes(pool) {
         return res.status(400).json({
           message: `${total} manne(s) placée(s) pour ${attendu} attendue(s).`,
         });
+      }
+
+      // Invariant : chaque étagère cible (hors sol) ne peut appartenir qu'à un seul client.
+      const clientCmd = cmd.rows[0].id_client;
+      const ciblesDistinctes = [...new Set(emplacements.map((e) => e.id_emplacement))];
+      for (const idEmp of ciblesDistinctes) {
+        const conflit = await client.query(
+          `SELECT 1
+           FROM commande_emplacement ce
+           JOIN commande c    ON c.id_commande = ce.id_commande
+           JOIN emplacement e ON e.id_emplacement = ce.id_emplacement
+           WHERE ce.id_emplacement = $1
+             AND e.est_au_sol = FALSE
+             AND ce.id_commande <> $2
+             AND c.id_client <> $3
+           LIMIT 1`,
+          [idEmp, req.params.id, clientCmd]
+        );
+        if (conflit.rowCount > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ message: 'Emplacement occupé par un autre client.' });
+        }
       }
 
       await client.query('DELETE FROM commande_emplacement WHERE id_commande = $1', [req.params.id]);
