@@ -1,6 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../api/commandes', () => ({
@@ -12,6 +11,13 @@ vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
 }));
 
+let handlers: Record<string, () => void> = {};
+const fauxSocket = {
+  on: (evt: string, h: () => void) => { handlers[evt] = h; },
+  off: () => {},
+};
+vi.mock('../temps-reel/socket', () => ({ obtenirSocket: () => fauxSocket }));
+
 import { Tableau } from './Tableau';
 import { listerCommandes } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
@@ -19,34 +25,37 @@ import { listerEmplacements } from '../api/emplacements';
 const commandes = [
   { id_commande: 'c1', id_client: 'cl1', statut: 'a_faire' as const, nombre_mannes: 2, prioritaire: false,
     cintres_client: false, cintres_entr_rendus: false, date_reception: 'x', client_nom: 'Dupont', client_prenom: 'Marie' },
-  { id_commande: 'c2', id_client: 'cl2', statut: 'en_cours' as const, nombre_mannes: 1, prioritaire: false,
+  { id_commande: 'c2', id_client: 'cl2', statut: 'recupere' as const, nombre_mannes: 1, prioritaire: false,
     cintres_client: false, cintres_entr_rendus: false, date_reception: 'x', client_nom: 'Martin', client_prenom: 'Jean' },
 ];
 
 function rendre() {
   const qc = new QueryClient();
-  return render(<QueryClientProvider client={qc}><Tableau /></QueryClientProvider>);
+  const spy = vi.spyOn(qc, 'invalidateQueries');
+  const vue = render(<QueryClientProvider client={qc}><Tableau /></QueryClientProvider>);
+  return { qc, spy, vue };
 }
 
 beforeEach(() => {
-  vi.mocked(listerCommandes).mockReset();
-  vi.mocked(listerEmplacements).mockReset();
-  vi.mocked(listerEmplacements).mockResolvedValue([]);
+  handlers = {};
+  vi.mocked(listerCommandes).mockReset().mockResolvedValue(commandes);
+  vi.mocked(listerEmplacements).mockReset().mockResolvedValue([]);
 });
 
 describe('Tableau', () => {
-  test('affiche les cartes des commandes actives', async () => {
-    vi.mocked(listerCommandes).mockResolvedValue(commandes);
+  test('affiche les 4 colonnes', async () => {
     rendre();
-    expect(await screen.findByText(/Marie Dupont/)).toBeInTheDocument();
-    expect(screen.getByText(/Jean Martin/)).toBeInTheDocument();
+    expect(await screen.findByText('À faire')).toBeInTheDocument();
+    expect(screen.getByText('En cours')).toBeInTheDocument();
+    expect(screen.getByText('Fait')).toBeInTheDocument();
+    expect(screen.getByText('Récupéré')).toBeInTheDocument();
   });
 
-  test('clic Modifier sur une carte à faire ouvre la modale', async () => {
-    vi.mocked(listerCommandes).mockResolvedValue(commandes);
-    rendre();
-    await userEvent.click(await screen.findByRole('button', { name: 'Modifier' }));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Modifier la commande')).toBeInTheDocument();
+  test('un événement commandes:maj invalide la requête commandes', async () => {
+    const { spy } = rendre();
+    await screen.findByText('À faire');
+    spy.mockClear();
+    handlers['commandes:maj']();
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['commandes'] });
   });
 });
