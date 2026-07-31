@@ -63,7 +63,8 @@ CREATE TABLE commande (
     temps_repassage_s   INTEGER NOT NULL DEFAULT 0,  -- secondes écoulées, hors pauses
     date_reception      TIMESTAMPTZ NOT NULL DEFAULT now(),
     date_recuperation   TIMESTAMPTZ,
-    id_repasseuse       UUID REFERENCES utilisateur(id_utilisateur)  -- encodeuse (attribution)
+    id_repasseuse       UUID REFERENCES utilisateur(id_utilisateur),  -- encodeuse (attribution)
+    repassage_debut     TIMESTAMPTZ  -- heure de démarrage du repassage en cours (NULL sinon)
 );
 
 -- ============================================================
