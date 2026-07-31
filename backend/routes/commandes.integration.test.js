@@ -422,3 +422,89 @@ describe('PUT /api/commandes/:id (US #180)', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+// Faux pool transactionnel pour POST /commandes/demarrer.
+// options : { trouve: boolean, majRow, erreur? }
+function fauxPoolDemarrer(options) {
+  const appels = [];
+  const client = {
+    query: async (sql, params) => {
+      appels.push({ sql, params });
+      if (/^\s*(BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return {};
+      if (/FROM commande c[\s\S]*code_barre/i.test(sql)) {
+        return options.trouve
+          ? { rowCount: 1, rows: [{ id_commande: 'cmd1' }] }
+          : { rowCount: 0, rows: [] };
+      }
+      if (/^\s*UPDATE commande/i.test(sql)) {
+        if (options.erreur) throw new Error('boom');
+        return { rowCount: 1, rows: [options.majRow] };
+      }
+      if (/DELETE FROM commande_emplacement/i.test(sql)) return { rowCount: 1 };
+      if (/INSERT INTO historique_statut/i.test(sql)) return { rowCount: 1 };
+      return { rowCount: 0, rows: [] };
+    },
+    release: () => {},
+  };
+  return { pool: { query: async () => ({ rows: [] }), connect: async () => client }, appels };
+}
+
+const majEnCours = {
+  id_commande: 'cmd1', id_client: UUID_CLIENT, statut: 'en_cours', nombre_mannes: 3,
+  prioritaire: false, cintres_client: false, cintres_entr_rendus: false,
+  date_reception: 'x', id_repasseuse: UUID_REPASSEUSE,
+};
+
+describe('POST /api/commandes/demarrer (US #220)', () => {
+  test('sans jeton → 401', async () => {
+    const f = fauxPoolDemarrer({ trouve: true, majRow: majEnCours });
+    const res = await request(creerApp(f.pool)).post('/api/commandes/demarrer').send({ code_barre: 'ABC' });
+    expect(res.status).toBe(401);
+  });
+
+  test('gérante → 403', async () => {
+    const f = fauxPoolDemarrer({ trouve: true, majRow: majEnCours });
+    const res = await request(creerApp(f.pool))
+      .post('/api/commandes/demarrer')
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({ code_barre: 'ABC' });
+    expect(res.status).toBe(403);
+  });
+
+  test('code_barre manquant → 400', async () => {
+    const f = fauxPoolDemarrer({ trouve: true, majRow: majEnCours });
+    const res = await request(creerApp(f.pool))
+      .post('/api/commandes/demarrer')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  test('aucune commande à faire → 404', async () => {
+    const f = fauxPoolDemarrer({ trouve: false });
+    const res = await request(creerApp(f.pool))
+      .post('/api/commandes/demarrer')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ code_barre: 'ABC' });
+    expect(res.status).toBe(404);
+  });
+
+  test('succès → 200, en_cours, effets + diffusion (US #220)', async () => {
+    const spy = jest.fn();
+    const f = fauxPoolDemarrer({ trouve: true, majRow: majEnCours });
+    const res = await request(creerApp(f.pool, spy))
+      .post('/api/commandes/demarrer')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ code_barre: 'ABC' });
+    expect(res.status).toBe(200);
+    expect(res.body.statut).toBe('en_cours');
+    // la recherche est scopée au code-barres + à la repasseuse du jeton
+    const select = f.appels.find((a) => /FROM commande c[\s\S]*code_barre/i.test(a.sql));
+    expect(select.params).toEqual(['ABC', UUID_REPASSEUSE]);
+    // effets de bord
+    expect(f.appels.some((a) => /UPDATE commande/i.test(a.sql) && /repassage_debut/i.test(a.sql))).toBe(true);
+    expect(f.appels.some((a) => /DELETE FROM commande_emplacement/i.test(a.sql))).toBe(true);
+    expect(f.appels.some((a) => /INSERT INTO historique_statut/i.test(a.sql))).toBe(true);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+});
