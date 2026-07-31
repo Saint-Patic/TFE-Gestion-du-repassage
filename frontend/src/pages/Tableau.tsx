@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listerCommandes } from '../api/commandes';
+import { listerCommandes, demarrerRepassage } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { obtenirSocket } from '../temps-reel/socket';
+import { useAuth } from '../auth/AuthContext';
+import { ErreurApi } from '../api/client';
 import type { CommandeCarte, Emplacement } from '../api/types';
 import { CarteCommande } from '../composants/CarteCommande';
 import { ModaleModifierCommande } from '../composants/ModaleModifierCommande';
@@ -16,9 +19,14 @@ const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
 
 export function Tableau() {
   const queryClient = useQueryClient();
+  const { utilisateur } = useAuth();
+  const estRepasseuse = utilisateur?.role === 'repasseuse';
   const { data: commandes = [] } = useQuery({ queryKey: ['commandes'], queryFn: listerCommandes });
   const [emplacements, setEmplacements] = useState<Emplacement[]>([]);
   const [aModifier, setAModifier] = useState<CommandeCarte | null>(null);
+  const [code, setCode] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const champScan = useRef<HTMLInputElement>(null);
 
   // Préchargement des 42 emplacements pour la modale de re-placement.
   useEffect(() => {
@@ -34,9 +42,43 @@ export function Tableau() {
     return () => { socket.off('commandes:maj', handler); };
   }, [queryClient]);
 
+  async function demarrer(e: FormEvent) {
+    e.preventDefault();
+    const valeur = code.trim();
+    setCode('');
+    if (!valeur) return;
+    setMessage(null);
+    try {
+      await demarrerRepassage(valeur);
+      // le Kanban se rafraîchit via le socket commandes:maj
+    } catch (err) {
+      if (err instanceof ErreurApi && err.statut === 404) {
+        setMessage('Aucune commande à faire pour ce client.');
+      } else {
+        setMessage('Erreur lors du démarrage du repassage.');
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <h1 className="text-xl font-bold">Tableau des commandes</h1>
+
+      {estRepasseuse && (
+        <form onSubmit={demarrer} className="flex flex-col gap-1">
+          <label htmlFor="scan-repassage" className="font-semibold">Démarrer un repassage</label>
+          <input
+            id="scan-repassage"
+            ref={champScan}
+            className="max-w-xs rounded border p-2"
+            placeholder="Scanner le client"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          {message && <p className="text-red-700">{message}</p>}
+        </form>
+      )}
+
       <div className="flex gap-4 overflow-x-auto">
         {COLONNES.map((col) => (
           <div key={col.statut} className="flex min-w-[12rem] flex-col gap-2">
