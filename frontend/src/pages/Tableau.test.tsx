@@ -8,6 +8,8 @@ vi.mock('../api/commandes', () => ({
   modifierCommande: vi.fn(),
   placerEmplacements: vi.fn(),
   demarrerRepassage: vi.fn(),
+  mettreEnPause: vi.fn(),
+  reprendreRepassage: vi.fn(),
 }));
 vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
