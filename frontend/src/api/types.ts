@@ -38,6 +38,8 @@ export type Commande = {
   cintres_entr_rendus: boolean;
   date_reception: string;
   id_repasseuse?: string | null;
+  repassage_debut?: string | null;
+  temps_repassage_s?: number;
 };
 
 export type CommandeCarte = Commande & {
