@@ -343,6 +343,14 @@ describe('GET /api/commandes (US #180)', () => {
     expect(sqlVue).toMatch(/c\.repassage_debut/);
     expect(sqlVue).toMatch(/c\.temps_repassage_s/);
   });
+
+  test('expose cintres_entr_nb (US #230)', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/c\.cintres_entr_nb/);
+  });
 });
 
 describe('PUT /api/commandes/:id (US #180)', () => {
@@ -596,6 +604,56 @@ describe('POST /api/commandes/:id/pause et /reprendre (US #220 + #225)', () => {
     const { pool } = poolMaj(0, null);
     const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/reprendre`)
       .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('PUT /api/commandes/:id/cintres-entreprise (US #230)', () => {
+  function poolMaj(rowCount, row) {
+    const appels = [];
+    const pool = { query: async (sql, params) => { appels.push({ sql, params }); return { rowCount, rows: row ? [row] : [] }; } };
+    return { pool, appels };
+  }
+  const ligne = { ...majEnCours, cintres_entr_nb: 4, id_repasseuse: UUID_REPASSEUSE };
+
+  test('sans jeton → 401', async () => {
+    const { pool } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool)).put(`/api/commandes/${UUID_CMD}/cintres-entreprise`).send({ cintres_entr_nb: 4 });
+    expect(res.status).toBe(401);
+  });
+
+  test('gérante → 403', async () => {
+    const { pool } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool)).put(`/api/commandes/${UUID_CMD}/cintres-entreprise`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send({ cintres_entr_nb: 4 });
+    expect(res.status).toBe(403);
+  });
+
+  test('valeur non entière / négative → 400 sans DB', async () => {
+    let db = 0;
+    const app = creerApp({ query: async () => { db++; return { rowCount: 0, rows: [] }; } });
+    const res = await request(app).put(`/api/commandes/${UUID_CMD}/cintres-entreprise`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send({ cintres_entr_nb: -1 });
+    expect(res.status).toBe(400);
+    expect(db).toBe(0);
+  });
+
+  test('succès → 200 : UPDATE scopé (en_cours) + diffuse', async () => {
+    const spy = jest.fn();
+    const { pool, appels } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool, spy)).put(`/api/commandes/${UUID_CMD}/cintres-entreprise`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send({ cintres_entr_nb: 4 });
+    expect(res.status).toBe(200);
+    expect(appels[0].sql).toMatch(/SET cintres_entr_nb\s*=\s*\$2/i);
+    expect(appels[0].sql).toMatch(/statut\s*=\s*'en_cours'/i);
+    expect(appels[0].params).toEqual([UUID_CMD, 4, UUID_REPASSEUSE]);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+
+  test('pas en cours / pas à elle → 409', async () => {
+    const { pool } = poolMaj(0, null);
+    const res = await request(creerApp(pool)).put(`/api/commandes/${UUID_CMD}/cintres-entreprise`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send({ cintres_entr_nb: 4 });
     expect(res.status).toBe(409);
   });
 });

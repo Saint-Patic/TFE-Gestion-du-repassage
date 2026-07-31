@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande } from './commandes';
+import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande, definirCintresEntreprise } from './commandes';
 import { definirFournisseurJeton } from './client';
 
 beforeEach(() => {
@@ -90,5 +90,17 @@ describe('modifierCommande', () => {
     expect(JSON.parse(options.body)).toEqual({
       nombre_mannes: 4, prioritaire: true, cintres_client: false, cintres_entr_rendus: false,
     });
+  });
+});
+
+describe('definirCintresEntreprise', () => {
+  test('PUT /api/commandes/:id/cintres-entreprise', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await definirCintresEntreprise('cmd1', 4);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/commandes/cmd1/cintres-entreprise');
+    expect(options.method).toBe('PUT');
+    expect(JSON.parse(options.body)).toEqual({ cintres_entr_nb: 4 });
   });
 });
