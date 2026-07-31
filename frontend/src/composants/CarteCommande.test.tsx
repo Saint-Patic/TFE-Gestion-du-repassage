@@ -38,4 +38,20 @@ describe('CarteCommande', () => {
     const { container } = render(<CarteCommande commande={{ ...base, prioritaire: false, statut: 'a_faire' }} />);
     expect(container.querySelector('.border-red-500')).toBeFalsy();
   });
+
+  test('carte « en cours » affiche un chrono HH:MM:SS', () => {
+    const now = new Date('2026-07-31T10:00:00Z').getTime();
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    render(<CarteCommande commande={{
+      ...base, statut: 'en_cours', repassage_debut: new Date(now).toISOString(), temps_repassage_s: 0,
+    }} />);
+    expect(screen.getByText(/^\d\d:\d\d:\d\d$/)).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  test('carte « à faire » n’affiche pas de chrono', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} />);
+    expect(screen.queryByText(/^\d\d:\d\d:\d\d$/)).not.toBeInTheDocument();
+  });
 });
