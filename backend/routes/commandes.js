@@ -64,7 +64,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
          JOIN client cl ON cl.id_client = c.id_client
          WHERE ( c.statut IN ('a_faire', 'en_cours', 'fait')
                  OR (c.statut = 'recupere' AND c.date_recuperation::date = CURRENT_DATE) )${filtreRepasseuse}
-         ORDER BY c.date_reception ASC`,
+         ORDER BY c.prioritaire DESC, c.date_reception ASC`,
         params
       );
       return res.json(resultat.rows);

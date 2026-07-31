@@ -326,6 +326,14 @@ describe('GET /api/commandes (US #180)', () => {
     expect(sqlVue).toMatch(/CURRENT_DATE/);
     expect(paramsVus).toEqual([]);
   });
+
+  test('trie prioritaires en tête puis FIFO (US #210)', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/ORDER BY c\.prioritaire DESC,\s*c\.date_reception ASC/);
+  });
 });
 
 describe('PUT /api/commandes/:id (US #180)', () => {
