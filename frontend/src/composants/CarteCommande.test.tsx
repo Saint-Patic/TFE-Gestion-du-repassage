@@ -74,4 +74,20 @@ describe('CarteCommande', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reprendre' }));
     expect(onReprendre).toHaveBeenCalled();
   });
+
+  test('carte « en cours » : saisir les cintres entreprise appelle onCintresEntreprise', async () => {
+    const onCintres = vi.fn();
+    render(<CarteCommande
+      commande={{ ...base, statut: 'en_cours', repassage_debut: null, temps_repassage_s: 0 }}
+      onCintresEntreprise={onCintres} />);
+    const champ = screen.getByLabelText(/Cintres entreprise/i);
+    await userEvent.type(champ, '4');
+    await userEvent.tab(); // blur
+    expect(onCintres).toHaveBeenCalledWith(expect.objectContaining({ id_commande: base.id_commande }), 4);
+  });
+
+  test('carte « à faire » : pas de champ cintres entreprise', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} onCintresEntreprise={vi.fn()} />);
+    expect(screen.queryByLabelText(/Cintres entreprise/i)).not.toBeInTheDocument();
+  });
 });
