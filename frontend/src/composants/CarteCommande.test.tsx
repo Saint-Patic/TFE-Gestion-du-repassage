@@ -54,4 +54,24 @@ describe('CarteCommande', () => {
     render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} />);
     expect(screen.queryByText(/^\d\d:\d\d:\d\d$/)).not.toBeInTheDocument();
   });
+
+  test('carte « en cours » en marche → bouton Pause (pas Reprendre)', async () => {
+    const onPause = vi.fn();
+    render(<CarteCommande
+      commande={{ ...base, statut: 'en_cours', repassage_debut: new Date().toISOString(), temps_repassage_s: 0 }}
+      onPause={onPause} onReprendre={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Reprendre' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(onPause).toHaveBeenCalled();
+  });
+
+  test('carte « en cours » en pause → bouton Reprendre (pas Pause)', async () => {
+    const onReprendre = vi.fn();
+    render(<CarteCommande
+      commande={{ ...base, statut: 'en_cours', repassage_debut: null, temps_repassage_s: 42 }}
+      onPause={vi.fn()} onReprendre={onReprendre} />);
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Reprendre' }));
+    expect(onReprendre).toHaveBeenCalled();
+  });
 });

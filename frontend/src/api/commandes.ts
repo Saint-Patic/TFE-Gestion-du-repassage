@@ -61,3 +61,13 @@ export function demarrerRepassage(codeBarre: string): Promise<Commande> {
     body: JSON.stringify({ code_barre: codeBarre }),
   });
 }
+
+// Met en pause le timer d'une commande « en cours ».
+export function mettreEnPause(id: string): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/pause`, { method: 'POST' });
+}
+
+// Reprend le timer d'une commande « en cours » mise en pause.
+export function reprendreRepassage(id: string): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/reprendre`, { method: 'POST' });
+}
