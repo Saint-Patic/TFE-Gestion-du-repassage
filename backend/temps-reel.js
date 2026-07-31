@@ -55,4 +55,11 @@ function diffuserA(rooms, evenement, donnees) {
   io.to(rooms).emit(evenement, donnees);
 }
 
-module.exports = { initialiserTempsReel, diffuser, diffuserA };
+// Fabrique le notificateur de mise à jour de commande :
+// diffuse commandes:maj à l'encodeuse (sa room) + à toutes les gérantes.
+function creerDiffuserMaj() {
+  return (idRepasseuse) =>
+    diffuserA(['utilisateur:' + idRepasseuse, 'role:gerante'], 'commandes:maj', {});
+}
+
+module.exports = { initialiserTempsReel, diffuser, diffuserA, creerDiffuserMaj };
