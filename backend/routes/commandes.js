@@ -1,6 +1,7 @@
 const express = require('express');
 const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
+const { calculerTempsRepassageS } = require('../commandes/temps');
 
 // Valide les champs scalaires d'une commande (mannes + flags). Renvoie un message ou null.
 function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
@@ -150,17 +151,25 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
     }
   });
 
-  // Met en pause le timer : cumule le segment courant dans temps_repassage_s, vide repassage_debut.
+  // Met en pause le timer : fige temps_repassage_s = cumul + segment courant (calcul JS), repassage_debut = NULL.
   // Seulement une commande « en cours » en marche, appartenant à la repasseuse. Repasseuse.
   routeur.post('/:id/pause', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    const idRepasseuse = req.utilisateur.id_utilisateur;
     try {
+      const cur = await pool.query(
+        `SELECT repassage_debut, temps_repassage_s FROM commande
+         WHERE id_commande = $1 AND id_repasseuse = $2 AND statut = 'en_cours' AND repassage_debut IS NOT NULL`,
+        [req.params.id, idRepasseuse]
+      );
+      if (cur.rowCount === 0) return res.status(409).json({ message: 'Impossible de mettre en pause cette commande.' });
+
+      const total = calculerTempsRepassageS(cur.rows[0].temps_repassage_s, cur.rows[0].repassage_debut, new Date());
+
       const maj = await pool.query(
-        `UPDATE commande
-         SET temps_repassage_s = temps_repassage_s + FLOOR(EXTRACT(EPOCH FROM (now() - repassage_debut)))::int,
-             repassage_debut = NULL
-         WHERE id_commande = $1 AND id_repasseuse = $2 AND statut = 'en_cours' AND repassage_debut IS NOT NULL
+        `UPDATE commande SET temps_repassage_s = $2, repassage_debut = NULL
+         WHERE id_commande = $1 AND repassage_debut IS NOT NULL
          RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse, repassage_debut, temps_repassage_s`,
-        [req.params.id, req.utilisateur.id_utilisateur]
+        [req.params.id, total]
       );
       if (maj.rowCount === 0) return res.status(409).json({ message: 'Impossible de mettre en pause cette commande.' });
       diffuserMaj(maj.rows[0].id_repasseuse);

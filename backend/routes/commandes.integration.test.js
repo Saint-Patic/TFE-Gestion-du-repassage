@@ -518,42 +518,64 @@ describe('POST /api/commandes/demarrer (US #220)', () => {
   });
 });
 
-describe('POST /api/commandes/:id/pause et /reprendre (US #220 — pause/reprise)', () => {
-  // Faux pool à UPDATE unique : renvoie rowCount + éventuellement une ligne, en capturant les appels.
+describe('POST /api/commandes/:id/pause et /reprendre (US #220 + #225)', () => {
+  // Pause = 2 requêtes : SELECT valeurs → UPDATE avec le total calculé en JS.
+  function poolPause({ selectRows, updateRow, updateRowCount = 1 }) {
+    const appels = [];
+    const pool = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        if (/SELECT repassage_debut, temps_repassage_s/i.test(sql)) return { rowCount: selectRows.length, rows: selectRows };
+        if (/^\s*UPDATE commande/i.test(sql)) return { rowCount: updateRowCount, rows: updateRow ? [updateRow] : [] };
+        return { rowCount: 0, rows: [] };
+      },
+    };
+    return { pool, appels };
+  }
+  // Reprise = UPDATE unique.
   function poolMaj(rowCount, row) {
     const appels = [];
     const pool = { query: async (sql, params) => { appels.push({ sql, params }); return { rowCount, rows: row ? [row] : [] }; } };
     return { pool, appels };
   }
-  const ligne = { ...majEnCours, id_repasseuse: UUID_REPASSEUSE };
+  const ligneEnCours = { ...majEnCours, id_repasseuse: UUID_REPASSEUSE };
 
   test('pause sans jeton → 401', async () => {
-    const { pool } = poolMaj(1, ligne);
+    const { pool } = poolPause({ selectRows: [{ repassage_debut: new Date().toISOString(), temps_repassage_s: 0 }], updateRow: ligneEnCours });
     const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/pause`).send();
     expect(res.status).toBe(401);
   });
 
   test('pause gérante → 403', async () => {
-    const { pool } = poolMaj(1, ligne);
+    const { pool } = poolPause({ selectRows: [{ repassage_debut: new Date().toISOString(), temps_repassage_s: 0 }], updateRow: ligneEnCours });
     const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/pause`)
       .set('Authorization', `Bearer ${jetonGerante()}`).send();
     expect(res.status).toBe(403);
   });
 
-  test('pause succès → 200 : cumule le temps, vide repassage_debut, scopé, diffuse', async () => {
+  test('pause succès → 200 : SELECT scopé, UPDATE fige le total calculé + NULL, diffuse', async () => {
     const spy = jest.fn();
-    const { pool, appels } = poolMaj(1, ligne);
+    const { pool, appels } = poolPause({
+      selectRows: [{ repassage_debut: new Date().toISOString(), temps_repassage_s: 5 }],
+      updateRow: { ...ligneEnCours, repassage_debut: null, temps_repassage_s: 5 },
+    });
     const res = await request(creerApp(pool, spy)).post(`/api/commandes/${UUID_CMD}/pause`)
       .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
     expect(res.status).toBe(200);
-    expect(appels[0].sql).toMatch(/temps_repassage_s\s*=\s*temps_repassage_s\s*\+/i);
-    expect(appels[0].sql).toMatch(/repassage_debut\s*=\s*NULL/i);
+    // 1ʳᵉ requête = SELECT scopé [id, id_repasseuse]
     expect(appels[0].params).toEqual([UUID_CMD, UUID_REPASSEUSE]);
+    // UPDATE : temps_repassage_s = $2 (total ≥ cumul) + repassage_debut = NULL
+    const up = appels.find((a) => /^\s*UPDATE commande/i.test(a.sql));
+    expect(up.sql).toMatch(/temps_repassage_s\s*=\s*\$2/i);
+    expect(up.sql).toMatch(/repassage_debut\s*=\s*NULL/i);
+    expect(up.params[0]).toBe(UUID_CMD);
+    expect(typeof up.params[1]).toBe('number');
+    expect(up.params[1]).toBeGreaterThanOrEqual(5);
     expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
   });
 
-  test('pause état incorrect (déjà en pause / autre) → 409', async () => {
-    const { pool } = poolMaj(0, null);
+  test('pause état incorrect (SELECT vide) → 409', async () => {
+    const { pool } = poolPause({ selectRows: [], updateRow: null });
     const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/pause`)
       .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
     expect(res.status).toBe(409);
@@ -561,7 +583,7 @@ describe('POST /api/commandes/:id/pause et /reprendre (US #220 — pause/reprise
 
   test('reprendre succès → 200 : repose repassage_debut, scopé, diffuse', async () => {
     const spy = jest.fn();
-    const { pool, appels } = poolMaj(1, ligne);
+    const { pool, appels } = poolMaj(1, ligneEnCours);
     const res = await request(creerApp(pool, spy)).post(`/api/commandes/${UUID_CMD}/reprendre`)
       .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
     expect(res.status).toBe(200);
