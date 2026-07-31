@@ -334,6 +334,15 @@ describe('GET /api/commandes (US #180)', () => {
     expect(res.status).toBe(200);
     expect(sqlVue).toMatch(/ORDER BY c\.prioritaire DESC,\s*c\.date_reception ASC/);
   });
+
+  test('expose repassage_debut + temps_repassage_s pour le chrono (US #220)', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/c\.repassage_debut/);
+    expect(sqlVue).toMatch(/c\.temps_repassage_s/);
+  });
 });
 
 describe('PUT /api/commandes/:id (US #180)', () => {
@@ -506,5 +515,65 @@ describe('POST /api/commandes/demarrer (US #220)', () => {
     expect(f.appels.some((a) => /DELETE FROM commande_emplacement/i.test(a.sql))).toBe(true);
     expect(f.appels.some((a) => /INSERT INTO historique_statut/i.test(a.sql))).toBe(true);
     expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+});
+
+describe('POST /api/commandes/:id/pause et /reprendre (US #220 — pause/reprise)', () => {
+  // Faux pool à UPDATE unique : renvoie rowCount + éventuellement une ligne, en capturant les appels.
+  function poolMaj(rowCount, row) {
+    const appels = [];
+    const pool = { query: async (sql, params) => { appels.push({ sql, params }); return { rowCount, rows: row ? [row] : [] }; } };
+    return { pool, appels };
+  }
+  const ligne = { ...majEnCours, id_repasseuse: UUID_REPASSEUSE };
+
+  test('pause sans jeton → 401', async () => {
+    const { pool } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/pause`).send();
+    expect(res.status).toBe(401);
+  });
+
+  test('pause gérante → 403', async () => {
+    const { pool } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/pause`)
+      .set('Authorization', `Bearer ${jetonGerante()}`).send();
+    expect(res.status).toBe(403);
+  });
+
+  test('pause succès → 200 : cumule le temps, vide repassage_debut, scopé, diffuse', async () => {
+    const spy = jest.fn();
+    const { pool, appels } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool, spy)).post(`/api/commandes/${UUID_CMD}/pause`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
+    expect(res.status).toBe(200);
+    expect(appels[0].sql).toMatch(/temps_repassage_s\s*=\s*temps_repassage_s\s*\+/i);
+    expect(appels[0].sql).toMatch(/repassage_debut\s*=\s*NULL/i);
+    expect(appels[0].params).toEqual([UUID_CMD, UUID_REPASSEUSE]);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+
+  test('pause état incorrect (déjà en pause / autre) → 409', async () => {
+    const { pool } = poolMaj(0, null);
+    const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/pause`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
+    expect(res.status).toBe(409);
+  });
+
+  test('reprendre succès → 200 : repose repassage_debut, scopé, diffuse', async () => {
+    const spy = jest.fn();
+    const { pool, appels } = poolMaj(1, ligne);
+    const res = await request(creerApp(pool, spy)).post(`/api/commandes/${UUID_CMD}/reprendre`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
+    expect(res.status).toBe(200);
+    expect(appels[0].sql).toMatch(/repassage_debut\s*=\s*now\(\)/i);
+    expect(appels[0].params).toEqual([UUID_CMD, UUID_REPASSEUSE]);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+
+  test('reprendre état incorrect → 409', async () => {
+    const { pool } = poolMaj(0, null);
+    const res = await request(creerApp(pool)).post(`/api/commandes/${UUID_CMD}/reprendre`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`).send();
+    expect(res.status).toBe(409);
   });
 });
