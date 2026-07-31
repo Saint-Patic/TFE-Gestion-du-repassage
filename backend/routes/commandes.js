@@ -59,7 +59,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       }
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
-                c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.date_reception, c.id_repasseuse,
+                c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.cintres_entr_nb, c.date_reception, c.id_repasseuse,
                 c.repassage_debut, c.temps_repassage_s,
                 cl.nom AS client_nom, cl.prenom AS client_prenom
          FROM commande c
@@ -190,6 +190,27 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         [req.params.id, req.utilisateur.id_utilisateur]
       );
       if (maj.rowCount === 0) return res.status(409).json({ message: 'Impossible de reprendre cette commande.' });
+      diffuserMaj(maj.rows[0].id_repasseuse);
+      return res.json(maj.rows[0]);
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
+  // Enregistre le nombre de cintres entreprise utilisés (pendant le repassage). Repasseuse, en_cours, scopé.
+  routeur.put('/:id/cintres-entreprise', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    const { cintres_entr_nb } = req.body || {};
+    if (!Number.isInteger(cintres_entr_nb) || cintres_entr_nb < 0) {
+      return res.status(400).json({ message: 'cintres_entr_nb doit être un entier ≥ 0.' });
+    }
+    try {
+      const maj = await pool.query(
+        `UPDATE commande SET cintres_entr_nb = $2
+         WHERE id_commande = $1 AND id_repasseuse = $3 AND statut = 'en_cours'
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, cintres_entr_nb, date_reception, id_repasseuse, repassage_debut, temps_repassage_s`,
+        [req.params.id, cintres_entr_nb, req.utilisateur.id_utilisateur]
+      );
+      if (maj.rowCount === 0) return res.status(409).json({ message: 'Commande non modifiable (pas en cours ou non attribuée).' });
       diffuserMaj(maj.rows[0].id_repasseuse);
       return res.json(maj.rows[0]);
     } catch {
