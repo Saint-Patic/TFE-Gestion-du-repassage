@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listerCommandes, demarrerRepassage } from '../api/commandes';
+import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { obtenirSocket } from '../temps-reel/socket';
 import { useAuth } from '../auth/AuthContext';
@@ -60,6 +60,10 @@ export function Tableau() {
     }
   }
 
+  // Pause / reprise du timer (repasseuse) ; le Kanban se rafraîchit via le socket.
+  function pause(c: CommandeCarte) { mettreEnPause(c.id_commande).catch(() => {}); }
+  function reprendre(c: CommandeCarte) { reprendreRepassage(c.id_commande).catch(() => {}); }
+
   return (
     <div className="flex flex-col gap-3">
       <h1 className="text-xl font-bold">Tableau des commandes</h1>
@@ -84,7 +88,9 @@ export function Tableau() {
           <div key={col.statut} className="flex min-w-[12rem] flex-col gap-2">
             <h2 className="font-semibold">{col.titre}</h2>
             {commandes.filter((c) => c.statut === col.statut).map((c) => (
-              <CarteCommande key={c.id_commande} commande={c} onModifier={setAModifier} />
+              <CarteCommande key={c.id_commande} commande={c} onModifier={setAModifier}
+                onPause={estRepasseuse ? pause : undefined}
+                onReprendre={estRepasseuse ? reprendre : undefined} />
             ))}
           </div>
         ))}
