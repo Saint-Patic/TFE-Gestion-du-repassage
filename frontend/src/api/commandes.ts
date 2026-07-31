@@ -53,3 +53,11 @@ export function modifierCommande(
     body: JSON.stringify(donnees),
   });
 }
+
+// Démarre le repassage de la 1ʳᵉ commande « à faire » du client scanné (→ en_cours).
+export function demarrerRepassage(codeBarre: string): Promise<Commande> {
+  return requeteApi<Commande>('/commandes/demarrer', {
+    method: 'POST',
+    body: JSON.stringify({ code_barre: codeBarre }),
+  });
+}
