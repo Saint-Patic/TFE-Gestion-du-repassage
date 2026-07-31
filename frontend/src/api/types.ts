@@ -40,6 +40,7 @@ export type Commande = {
   id_repasseuse?: string | null;
   repassage_debut?: string | null;
   temps_repassage_s?: number;
+  cintres_entr_nb?: number | null;
 };
 
 export type CommandeCarte = Commande & {

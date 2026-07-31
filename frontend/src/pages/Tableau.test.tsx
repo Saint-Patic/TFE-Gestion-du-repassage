@@ -10,6 +10,7 @@ vi.mock('../api/commandes', () => ({
   demarrerRepassage: vi.fn(),
   mettreEnPause: vi.fn(),
   reprendreRepassage: vi.fn(),
+  definirCintresEntreprise: vi.fn(),
 }));
 vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
