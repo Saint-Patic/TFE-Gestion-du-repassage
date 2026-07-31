@@ -54,6 +54,14 @@ export function modifierCommande(
   });
 }
 
+// Enregistre le nombre de cintres entreprise utilisés (pendant le repassage, commande en cours).
+export function definirCintresEntreprise(id: string, nb: number): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/cintres-entreprise`, {
+    method: 'PUT',
+    body: JSON.stringify({ cintres_entr_nb: nb }),
+  });
+}
+
 // Démarre le repassage de la 1ʳᵉ commande « à faire » du client scanné (→ en_cours).
 export function demarrerRepassage(codeBarre: string): Promise<Commande> {
   return requeteApi<Commande>('/commandes/demarrer', {

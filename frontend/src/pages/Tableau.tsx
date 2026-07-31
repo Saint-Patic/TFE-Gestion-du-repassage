@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage } from '../api/commandes';
+import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage, definirCintresEntreprise } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { obtenirSocket } from '../temps-reel/socket';
 import { useAuth } from '../auth/AuthContext';
@@ -63,6 +63,7 @@ export function Tableau() {
   // Pause / reprise du timer (repasseuse) ; le Kanban se rafraîchit via le socket.
   function pause(c: CommandeCarte) { mettreEnPause(c.id_commande).catch(() => {}); }
   function reprendre(c: CommandeCarte) { reprendreRepassage(c.id_commande).catch(() => {}); }
+  function cintres(c: CommandeCarte, nb: number) { definirCintresEntreprise(c.id_commande, nb).catch(() => {}); }
 
   return (
     <div className="flex flex-col gap-3">
@@ -90,7 +91,8 @@ export function Tableau() {
             {commandes.filter((c) => c.statut === col.statut).map((c) => (
               <CarteCommande key={c.id_commande} commande={c} onModifier={setAModifier}
                 onPause={estRepasseuse ? pause : undefined}
-                onReprendre={estRepasseuse ? reprendre : undefined} />
+                onReprendre={estRepasseuse ? reprendre : undefined}
+                onCintresEntreprise={estRepasseuse ? cintres : undefined} />
             ))}
           </div>
         ))}

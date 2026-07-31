@@ -6,11 +6,12 @@ type Props = {
   onModifier?: (commande: CommandeCarte) => void;
   onPause?: (commande: CommandeCarte) => void;
   onReprendre?: (commande: CommandeCarte) => void;
+  onCintresEntreprise?: (commande: CommandeCarte, nb: number) => void;
 };
 
 // Carte d'une commande dans le tableau. « Modifier » réservé au statut « à faire » ;
-// « Pause »/« Reprendre » sur les cartes « en cours » (selon que le timer tourne ou non).
-export function CarteCommande({ commande, onModifier, onPause, onReprendre }: Props) {
+// « Pause »/« Reprendre » + saisie des cintres entreprise sur les cartes « en cours ».
+export function CarteCommande({ commande, onModifier, onPause, onReprendre, onCintresEntreprise }: Props) {
   return (
     <div className={`flex flex-col gap-1 rounded border p-2 ${commande.prioritaire ? 'border-red-500 bg-red-50' : ''}`}>
       <span className="font-semibold">{commande.client_prenom} {commande.client_nom}</span>
@@ -31,6 +32,22 @@ export function CarteCommande({ commande, onModifier, onPause, onReprendre }: Pr
             </button>
           )}
         </span>
+      )}
+      {commande.statut === 'en_cours' && onCintresEntreprise && (
+        <label className="flex items-center gap-2 text-sm">
+          Cintres entreprise
+          <input
+            type="number"
+            min={0}
+            defaultValue={commande.cintres_entr_nb ?? ''}
+            className="w-16 rounded border p-1"
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isInteger(n) && n >= 0) onCintresEntreprise(commande, n);
+            }}
+          />
+        </label>
       )}
       <span className="flex flex-wrap gap-1">
         {commande.prioritaire && (
