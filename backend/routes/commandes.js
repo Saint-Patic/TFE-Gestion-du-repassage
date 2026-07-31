@@ -150,6 +150,44 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
     }
   });
 
+  // Met en pause le timer : cumule le segment courant dans temps_repassage_s, vide repassage_debut.
+  // Seulement une commande « en cours » en marche, appartenant à la repasseuse. Repasseuse.
+  routeur.post('/:id/pause', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    try {
+      const maj = await pool.query(
+        `UPDATE commande
+         SET temps_repassage_s = temps_repassage_s + FLOOR(EXTRACT(EPOCH FROM (now() - repassage_debut)))::int,
+             repassage_debut = NULL
+         WHERE id_commande = $1 AND id_repasseuse = $2 AND statut = 'en_cours' AND repassage_debut IS NOT NULL
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse, repassage_debut, temps_repassage_s`,
+        [req.params.id, req.utilisateur.id_utilisateur]
+      );
+      if (maj.rowCount === 0) return res.status(409).json({ message: 'Impossible de mettre en pause cette commande.' });
+      diffuserMaj(maj.rows[0].id_repasseuse);
+      return res.json(maj.rows[0]);
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
+  // Reprend le timer : repose repassage_debut = now(). Seulement une commande « en cours » en pause,
+  // appartenant à la repasseuse. Repasseuse.
+  routeur.post('/:id/reprendre', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    try {
+      const maj = await pool.query(
+        `UPDATE commande SET repassage_debut = now()
+         WHERE id_commande = $1 AND id_repasseuse = $2 AND statut = 'en_cours' AND repassage_debut IS NULL
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse, repassage_debut, temps_repassage_s`,
+        [req.params.id, req.utilisateur.id_utilisateur]
+      );
+      if (maj.rowCount === 0) return res.status(409).json({ message: 'Impossible de reprendre cette commande.' });
+      diffuserMaj(maj.rows[0].id_repasseuse);
+      return res.json(maj.rows[0]);
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
   // Répartit les mannes d'une commande sur des emplacements (remplacement, transaction).
   routeur.post('/:id/emplacements', authentifier, exigerRole('gerante', 'repasseuse'), async (req, res) => {
     const { emplacements } = req.body || {};
