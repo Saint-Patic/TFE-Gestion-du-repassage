@@ -334,6 +334,15 @@ describe('GET /api/commandes (US #180)', () => {
     expect(res.status).toBe(200);
     expect(sqlVue).toMatch(/ORDER BY c\.prioritaire DESC,\s*c\.date_reception ASC/);
   });
+
+  test('expose repassage_debut + temps_repassage_s pour le chrono (US #220)', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/c\.repassage_debut/);
+    expect(sqlVue).toMatch(/c\.temps_repassage_s/);
+  });
 });
 
 describe('PUT /api/commandes/:id (US #180)', () => {

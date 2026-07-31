@@ -59,6 +59,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
                 c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.date_reception, c.id_repasseuse,
+                c.repassage_debut, c.temps_repassage_s,
                 cl.nom AS client_nom, cl.prenom AS client_prenom
          FROM commande c
          JOIN client cl ON cl.id_client = c.id_client
