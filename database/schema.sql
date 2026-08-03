@@ -93,8 +93,28 @@ CREATE TABLE historique_statut (
 );
 
 -- ============================================================
+-- Table : SmsEnAttente (US #240)
+-- File des SMS à envoyer. La passerelle Android vient les chercher
+-- (le serveur ne peut pas joindre le téléphone, situé derrière un NAT).
+-- Le numéro de téléphone n'est PAS stocké ici : il est résolu par jointure
+-- vers client au moment du retrait (minimisation RGPD).
+-- ============================================================
+CREATE TABLE sms_en_attente (
+    id_sms           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_commande      UUID NOT NULL REFERENCES commande(id_commande) ON DELETE CASCADE,
+    message          TEXT NOT NULL,
+    statut           VARCHAR(20) NOT NULL DEFAULT 'en_attente'
+                         CHECK (statut IN ('en_attente','envoye','echec')),
+    tentatives       SMALLINT NOT NULL DEFAULT 0,
+    date_creation    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    date_envoi       TIMESTAMPTZ,
+    derniere_erreur  TEXT
+);
+
+-- ============================================================
 -- Index utiles pour les requêtes fréquentes de l'application
 -- ============================================================
 CREATE INDEX idx_commande_statut ON commande(statut);
 CREATE INDEX idx_commande_client ON commande(id_client);
 CREATE INDEX idx_historique_commande ON historique_statut(id_commande);
+CREATE INDEX idx_sms_statut ON sms_en_attente(statut);
