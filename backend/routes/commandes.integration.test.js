@@ -657,3 +657,73 @@ describe('PUT /api/commandes/:id/cintres-entreprise (US #230)', () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe('GET /api/commandes/a-scanner/:code_barre (US #260)', () => {
+  const cmdEnCours = {
+    id_commande: UUID_CMD, id_client: UUID_CLIENT, statut: 'en_cours',
+    nombre_mannes: 3, prioritaire: false, date_reception: 'x',
+    id_repasseuse: UUID_REPASSEUSE, temps_repassage_s: 0, repassage_debut: null,
+  };
+
+  function poolResolution(rows) {
+    const appels = [];
+    const pool = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        return { rowCount: rows.length, rows };
+      },
+    };
+    return { pool, appels };
+  }
+
+  test('sans jeton → 401', async () => {
+    const { pool } = poolResolution([]);
+    const res = await request(creerApp(pool)).get('/api/commandes/a-scanner/ABC');
+    expect(res.status).toBe(401);
+  });
+
+  test('gérante → 403', async () => {
+    const { pool } = poolResolution([cmdEnCours]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('commande en cours → action cloturer', async () => {
+    const { pool } = poolResolution([cmdEnCours]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('cloturer');
+    expect(res.body.commande.id_commande).toBe(UUID_CMD);
+  });
+
+  test('seulement une commande à faire → action demarrer', async () => {
+    const { pool } = poolResolution([{ ...cmdEnCours, statut: 'a_faire' }]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('demarrer');
+  });
+
+  test('aucune commande active → 404', async () => {
+    const { pool } = poolResolution([]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test('recherche scopée à la repasseuse, « en cours » prioritaire dans le tri', async () => {
+    const { pool, appels } = poolResolution([cmdEnCours]);
+    await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(appels[0].params).toEqual(['ABC', UUID_REPASSEUSE]);
+    expect(appels[0].sql).toMatch(/statut IN \('en_cours','a_faire'\)/i);
+    expect(appels[0].sql).toMatch(/ORDER BY \(c\.statut = 'en_cours'\) DESC/i);
+  });
+});
