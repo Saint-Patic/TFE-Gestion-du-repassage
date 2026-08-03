@@ -2,6 +2,10 @@ const express = require('express');
 const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
 const { calculerTempsRepassageS } = require('../commandes/temps');
+const { validerEmplacements, enregistrerPlacement } = require('../commandes/placement');
+const { transitionValide } = require('../commandes/transitions');
+const { mettreEnFileSms } = require('../sms/file');
+const { construireMessagePret } = require('../sms/gabarit');
 
 // Valide les champs scalaires d'une commande (mannes + flags). Renvoie un message ou null.
 function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
@@ -24,22 +28,6 @@ function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, 
 function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
   if (!id_client || typeof id_client !== 'string') return 'id_client est requis.';
   return validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
-}
-
-// Valide le corps de la répartition d'emplacements. Renvoie un message ou null.
-function validerEmplacements(emplacements) {
-  if (!Array.isArray(emplacements) || emplacements.length === 0) {
-    return 'emplacements doit être un tableau non vide.';
-  }
-  for (const e of emplacements) {
-    if (!e || typeof e.id_emplacement !== 'string' || !e.id_emplacement) {
-      return 'Chaque emplacement doit avoir un id_emplacement.';
-    }
-    if (!Number.isInteger(e.nombre_mannes) || e.nombre_mannes < 1) {
-      return 'nombre_mannes doit être un entier ≥ 1.';
-    }
-  }
-  return null;
 }
 
 // Fabrique : routeur commandes alimenté par le pool pg fourni.
@@ -70,6 +58,31 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         params
       );
       return res.json(resultat.rows);
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
+  // Résout l'action à effectuer pour un scan de code-barres client. LECTURE PURE : ne modifie rien.
+  // Priorité « en cours » d'abord : on termine ce qu'on a commencé avant d'en démarrer une autre,
+  // ce qui rend impossible le cas d'une cliente ayant à la fois une commande à faire et une en cours.
+  routeur.get('/a-scanner/:code_barre', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    try {
+      const resultat = await pool.query(
+        `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes, c.prioritaire,
+                c.date_reception, c.id_repasseuse, c.temps_repassage_s, c.repassage_debut
+         FROM commande c
+         JOIN client cl ON cl.id_client = c.id_client
+         WHERE cl.code_barre = $1 AND c.id_repasseuse = $2 AND c.statut IN ('en_cours','a_faire')
+         ORDER BY (c.statut = 'en_cours') DESC, c.prioritaire DESC, c.date_reception ASC
+         LIMIT 1`,
+        [req.params.code_barre, req.utilisateur.id_utilisateur]
+      );
+      if (resultat.rowCount === 0) {
+        return res.status(404).json({ message: 'Aucune commande active pour ce client.' });
+      }
+      const commande = resultat.rows[0];
+      return res.json({ action: commande.statut === 'en_cours' ? 'cloturer' : 'demarrer', commande });
     } catch {
       return res.status(500).json({ message: 'Erreur serveur.' });
     }
@@ -145,6 +158,85 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       return res.status(200).json(maj.rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Clôture d'un repassage : « en cours → fait » en UNE SEULE transaction —
+  // timer arrêté, mannes replacées sur les étagères, historique tracé, SMS déposé en file.
+  // Si une étape échoue, le ROLLBACK annule tout : aucun SMS pour une clôture qui n'a pas abouti.
+  routeur.post('/:id/cloturer', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    const { emplacements } = req.body || {};
+    const erreur = validerEmplacements(emplacements);
+    if (erreur) return res.status(400).json({ message: erreur });
+
+    const idRepasseuse = req.utilisateur.id_utilisateur;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const cur = await client.query(
+        `SELECT id_client, nombre_mannes, statut, temps_repassage_s, repassage_debut
+         FROM commande WHERE id_commande = $1 AND id_repasseuse = $2 FOR UPDATE`,
+        [req.params.id, idRepasseuse]
+      );
+      if (cur.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Commande introuvable.' });
+      }
+      const commande = cur.rows[0];
+
+      // Garde de transition (#228) : couvre « pas en cours » comme « déjà clôturée ».
+      if (!transitionValide(commande.statut, 'fait')) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est plus en cours." });
+      }
+
+      // Temps final (#225) : cumul + segment courant, puis le chrono s'arrête.
+      const temps = calculerTempsRepassageS(
+        commande.temps_repassage_s, commande.repassage_debut, new Date()
+      );
+
+      const maj = await client.query(
+        `UPDATE commande SET statut='fait', temps_repassage_s=$2, repassage_debut=NULL
+         WHERE id_commande=$1 AND statut='en_cours'
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client,
+                   cintres_entr_rendus, cintres_entr_nb, date_reception, id_repasseuse,
+                   repassage_debut, temps_repassage_s`,
+        [req.params.id, temps]
+      );
+      // Le FOR UPDATE ci-dessus verrouille la ligne, donc ce cas ne devrait pas survenir ;
+      // la condition reste comme filet si le verrou disparaissait un jour. Pas du code mort.
+      if (maj.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est plus en cours." });
+      }
+
+      await enregistrerPlacement(
+        client, req.params.id, commande.id_client, commande.nombre_mannes, emplacements
+      );
+
+      await client.query(
+        `INSERT INTO historique_statut (id_commande, ancien_statut, nouveau_statut, id_utilisateur)
+         VALUES ($1, 'en_cours', 'fait', $2)`,
+        [req.params.id, idRepasseuse]
+      );
+
+      // Dépôt du SMS DANS la transaction (#250) : pas de clôture, pas de SMS.
+      await mettreEnFileSms(client, req.params.id, construireMessagePret());
+
+      await client.query('COMMIT');
+      // Diffusion APRÈS le COMMIT : notifier avant annoncerait un état que la base peut annuler.
+      diffuserMaj(maj.rows[0].id_repasseuse);
+      return res.json(maj.rows[0]);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      if (err.statut) return res.status(err.statut).json({ message: err.message });
+      if (err.code === '23503') {
+        return res.status(400).json({ message: 'Emplacement introuvable.' });
+      }
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
       client.release();
@@ -237,50 +329,15 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         return res.status(404).json({ message: 'Commande introuvable.' });
       }
 
-      const attendu = cmd.rows[0].nombre_mannes;
-      const total = emplacements.reduce((s, e) => s + e.nombre_mannes, 0);
-      if (total !== attendu) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          message: `${total} manne(s) placée(s) pour ${attendu} attendue(s).`,
-        });
-      }
-
-      // Invariant : chaque étagère cible (hors sol) ne peut appartenir qu'à un seul client.
-      const clientCmd = cmd.rows[0].id_client;
-      const ciblesDistinctes = [...new Set(emplacements.map((e) => e.id_emplacement))];
-      for (const idEmp of ciblesDistinctes) {
-        const conflit = await client.query(
-          `SELECT 1
-           FROM commande_emplacement ce
-           JOIN commande c    ON c.id_commande = ce.id_commande
-           JOIN emplacement e ON e.id_emplacement = ce.id_emplacement
-           WHERE ce.id_emplacement = $1
-             AND e.est_au_sol = FALSE
-             AND ce.id_commande <> $2
-             AND c.id_client <> $3
-           LIMIT 1`,
-          [idEmp, req.params.id, clientCmd]
-        );
-        if (conflit.rowCount > 0) {
-          await client.query('ROLLBACK');
-          return res.status(409).json({ message: 'Emplacement occupé par un autre client.' });
-        }
-      }
-
-      await client.query('DELETE FROM commande_emplacement WHERE id_commande = $1', [req.params.id]);
-      for (const e of emplacements) {
-        await client.query(
-          `INSERT INTO commande_emplacement (id_commande, id_emplacement, nombre_mannes)
-           VALUES ($1, $2, $3)`,
-          [req.params.id, e.id_emplacement, e.nombre_mannes]
-        );
-      }
+      await enregistrerPlacement(
+        client, req.params.id, cmd.rows[0].id_client, cmd.rows[0].nombre_mannes, emplacements
+      );
 
       await client.query('COMMIT');
       return res.status(201).json({ id_commande: req.params.id, emplacements });
     } catch (err) {
       await client.query('ROLLBACK');
+      if (err.statut) return res.status(err.statut).json({ message: err.message });
       if (err.code === '23503') {
         return res.status(400).json({ message: 'Emplacement introuvable.' });
       }

@@ -657,3 +657,199 @@ describe('PUT /api/commandes/:id/cintres-entreprise (US #230)', () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe('GET /api/commandes/a-scanner/:code_barre (US #260)', () => {
+  const cmdEnCours = {
+    id_commande: UUID_CMD, id_client: UUID_CLIENT, statut: 'en_cours',
+    nombre_mannes: 3, prioritaire: false, date_reception: 'x',
+    id_repasseuse: UUID_REPASSEUSE, temps_repassage_s: 0, repassage_debut: null,
+  };
+
+  function poolResolution(rows) {
+    const appels = [];
+    const pool = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        return { rowCount: rows.length, rows };
+      },
+    };
+    return { pool, appels };
+  }
+
+  test('sans jeton → 401', async () => {
+    const { pool } = poolResolution([]);
+    const res = await request(creerApp(pool)).get('/api/commandes/a-scanner/ABC');
+    expect(res.status).toBe(401);
+  });
+
+  test('gérante → 403', async () => {
+    const { pool } = poolResolution([cmdEnCours]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('commande en cours → action cloturer', async () => {
+    const { pool } = poolResolution([cmdEnCours]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('cloturer');
+    expect(res.body.commande.id_commande).toBe(UUID_CMD);
+  });
+
+  test('seulement une commande à faire → action demarrer', async () => {
+    const { pool } = poolResolution([{ ...cmdEnCours, statut: 'a_faire' }]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('demarrer');
+  });
+
+  test('aucune commande active → 404', async () => {
+    const { pool } = poolResolution([]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test('recherche scopée à la repasseuse, « en cours » prioritaire dans le tri', async () => {
+    const { pool, appels } = poolResolution([cmdEnCours]);
+    await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(appels[0].params).toEqual(['ABC', UUID_REPASSEUSE]);
+    expect(appels[0].sql).toMatch(/statut IN \('en_cours','a_faire'\)/i);
+    expect(appels[0].sql).toMatch(/ORDER BY \(c\.statut = 'en_cours'\) DESC/i);
+  });
+});
+
+describe('POST /api/commandes/:id/cloturer (US #260)', () => {
+  const enCours = {
+    id_client: UUID_CLIENT, nombre_mannes: 3, statut: 'en_cours',
+    temps_repassage_s: 100, repassage_debut: null,
+  };
+  const ligneFait = {
+    id_commande: UUID_CMD, id_client: UUID_CLIENT, statut: 'fait', nombre_mannes: 3,
+    prioritaire: false, date_reception: 'x', id_repasseuse: UUID_REPASSEUSE,
+    repassage_debut: null, temps_repassage_s: 100,
+  };
+
+  // Faux pool transactionnel pour la clôture.
+  // options : { commande: objet|null, conflitAutreClient=false, majRowCount=1 }
+  function poolCloture(options) {
+    const appels = [];
+    const client = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        if (/^\s*(BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return {};
+        if (/FROM commande WHERE id_commande = \$1 AND id_repasseuse/i.test(sql)) {
+          return options.commande
+            ? { rowCount: 1, rows: [options.commande] }
+            : { rowCount: 0, rows: [] };
+        }
+        if (/UPDATE commande SET statut='fait'/i.test(sql)) {
+          const n = options.majRowCount === undefined ? 1 : options.majRowCount;
+          return { rowCount: n, rows: n ? [ligneFait] : [] };
+        }
+        if (/id_client <> \$3/i.test(sql)) {
+          return { rowCount: options.conflitAutreClient ? 1 : 0, rows: [] };
+        }
+        if (/INSERT INTO sms_en_attente/i.test(sql)) {
+          return { rowCount: 1, rows: [{ id_sms: 'sms-1' }] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      release: () => {},
+    };
+    return { appels, pool: { query: async () => ({ rows: [] }), connect: async () => client } };
+  }
+
+  test('gérante → 403', async () => {
+    const f = poolCloture({ commande: enCours });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonGerante()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(403);
+  });
+
+  test('emplacements invalides → 400 sans toucher la DB', async () => {
+    const f = poolCloture({ commande: enCours });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: [] });
+    expect(res.status).toBe(400);
+    expect(f.appels).toHaveLength(0);
+  });
+
+  test('commande introuvable ou pas à elle → 404', async () => {
+    const f = poolCloture({ commande: null });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(404);
+  });
+
+  test('commande pas en cours → 409 (transitionValide refuse)', async () => {
+    const f = poolCloture({ commande: { ...enCours, statut: 'a_faire' } });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(409);
+    expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(false);
+  });
+
+  test('succès → 200, statut fait, timer arrêté, historique, SMS déposé, COMMIT', async () => {
+    let appelsALaDiffusion = -1;
+    const f = poolCloture({ commande: enCours });
+    const spy = jest.fn(() => { appelsALaDiffusion = f.appels.length; });
+    const res = await request(creerApp(f.pool, spy))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+
+    expect(res.status).toBe(200);
+    expect(res.body.statut).toBe('fait');
+
+    const maj = f.appels.find((a) => /UPDATE commande SET statut='fait'/i.test(a.sql));
+    expect(maj.sql).toMatch(/repassage_debut=NULL/i);
+    expect(maj.params).toEqual([UUID_CMD, 100]);
+
+    expect(f.appels.some((a) => /INSERT INTO historique_statut/i.test(a.sql))).toBe(true);
+    expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(true);
+
+    const indexCommit = f.appels.findIndex((a) => /^\s*COMMIT/i.test(a.sql));
+    expect(indexCommit).toBeGreaterThan(-1);
+    expect(appelsALaDiffusion).toBeGreaterThan(indexCommit);
+    expect(spy).toHaveBeenCalledWith(UUID_REPASSEUSE);
+  });
+
+  test('somme de mannes incorrecte → 400, ROLLBACK, aucun SMS déposé', async () => {
+    const f = poolCloture({ commande: { ...enCours, nombre_mannes: 5 } });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(400);
+    expect(f.appels.some((a) => /^\s*ROLLBACK/i.test(a.sql))).toBe(true);
+    expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(false);
+  });
+
+  test('étagère occupée par un autre client → 409, aucun SMS déposé', async () => {
+    const f = poolCloture({ commande: enCours, conflitAutreClient: true });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(409);
+    expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(false);
+  });
+});
