@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage, definirCintresEntreprise } from '../api/commandes';
+import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage, definirCintresEntreprise, resoudreScan, cloturerRepassage } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { obtenirSocket } from '../temps-reel/socket';
 import { useAuth } from '../auth/AuthContext';
 import { ErreurApi } from '../api/client';
-import type { CommandeCarte, Emplacement } from '../api/types';
+import type { Commande, CommandeCarte, Emplacement } from '../api/types';
 import { CarteCommande } from '../composants/CarteCommande';
 import { ModaleModifierCommande } from '../composants/ModaleModifierCommande';
+import { PlacementMannes } from '../composants/PlacementMannes';
 
 const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
   { statut: 'a_faire', titre: 'À faire' },
@@ -27,6 +28,7 @@ export function Tableau() {
   const [code, setCode] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const champScan = useRef<HTMLInputElement>(null);
+  const [aCloturer, setACloturer] = useState<Commande | null>(null);
 
   // Préchargement des 42 emplacements pour la modale de re-placement.
   useEffect(() => {
@@ -42,21 +44,42 @@ export function Tableau() {
     return () => { socket.off('commandes:maj', handler); };
   }, [queryClient]);
 
-  async function demarrer(e: FormEvent) {
+  // Un seul champ de scan : le serveur déduit l'action. « En cours » d'abord, sinon « à faire ».
+  async function scanner(e: FormEvent) {
     e.preventDefault();
     const valeur = code.trim();
     setCode('');
     if (!valeur) return;
     setMessage(null);
     try {
-      await demarrerRepassage(valeur);
-      // le Kanban se rafraîchit via le socket commandes:maj
+      const { action, commande } = await resoudreScan(valeur);
+      if (action === 'demarrer') {
+        await demarrerRepassage(valeur);
+        return; // le Kanban se rafraîchit via le socket commandes:maj
+      }
+      setACloturer(commande); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
     } catch (err) {
       if (err instanceof ErreurApi && err.statut === 404) {
-        setMessage('Aucune commande à faire pour ce client.');
+        setMessage('Aucune commande active pour ce client.');
       } else {
-        setMessage('Erreur lors du démarrage du repassage.');
+        setMessage('Erreur lors du scan.');
       }
+    }
+  }
+
+  // Écriture à la fin : la commande ne bascule qu'au « Terminer » du placement.
+  async function terminerCloture(lignes: { id_emplacement: string; nombre_mannes: number }[]) {
+    if (!aCloturer) return;
+    try {
+      await cloturerRepassage(aCloturer.id_commande, lignes);
+      setACloturer(null);
+    } catch (err) {
+      setACloturer(null);
+      setMessage(
+        err instanceof ErreurApi && err.statut === 409
+          ? "Cette commande n'est plus en cours."
+          : 'Erreur lors de la clôture.'
+      );
     }
   }
 
@@ -69,9 +92,9 @@ export function Tableau() {
     <div className="flex flex-col gap-3">
       <h1 className="text-xl font-bold">Tableau des commandes</h1>
 
-      {estRepasseuse && (
-        <form onSubmit={demarrer} className="flex flex-col gap-1">
-          <label htmlFor="scan-repassage" className="font-semibold">Démarrer un repassage</label>
+      {estRepasseuse && !aCloturer && (
+        <form onSubmit={scanner} className="flex flex-col gap-1">
+          <label htmlFor="scan-repassage" className="font-semibold">Scanner un client</label>
           <input
             id="scan-repassage"
             ref={champScan}
@@ -82,6 +105,21 @@ export function Tableau() {
           />
           {message && <p className="text-red-700">{message}</p>}
         </form>
+      )}
+
+      {aCloturer && (
+        <div className="flex flex-col gap-2 rounded border p-3">
+          <h2 className="font-semibold">Clôture : replacer les mannes</h2>
+          <PlacementMannes
+            nombreMannes={aCloturer.nombre_mannes}
+            emplacements={emplacements}
+            idClient={aCloturer.id_client}
+            onTerminer={terminerCloture}
+          />
+          <button type="button" className="self-start underline" onClick={() => setACloturer(null)}>
+            Annuler la clôture
+          </button>
+        </div>
       )}
 
       <div className="flex gap-4 overflow-x-auto">

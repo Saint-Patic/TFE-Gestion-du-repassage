@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande, definirCintresEntreprise } from './commandes';
+import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande, definirCintresEntreprise, resoudreScan, cloturerRepassage } from './commandes';
 import { definirFournisseurJeton } from './client';
 
 beforeEach(() => {
@@ -102,5 +102,27 @@ describe('definirCintresEntreprise', () => {
     expect(url).toBe('/api/commandes/cmd1/cintres-entreprise');
     expect(options.method).toBe('PUT');
     expect(JSON.parse(options.body)).toEqual({ cintres_entr_nb: 4 });
+  });
+});
+
+describe('resoudreScan et cloturerRepassage (US #260)', () => {
+  test('resoudreScan : GET /api/commandes/a-scanner/:code', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ action: 'cloturer', commande: {} }), { status: 200 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await resoudreScan('ABC123');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/commandes/a-scanner/ABC123');
+  });
+
+  test('cloturerRepassage : POST /api/commandes/:id/cloturer avec les emplacements', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const lignes = [{ id_emplacement: 'e1', nombre_mannes: 2 }];
+    await cloturerRepassage('cmd1', lignes);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/commandes/cmd1/cloturer');
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({ emplacements: lignes });
   });
 });
