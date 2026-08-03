@@ -2,6 +2,7 @@ const express = require('express');
 const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
 const { calculerTempsRepassageS } = require('../commandes/temps');
+const { validerEmplacements, enregistrerPlacement } = require('../commandes/placement');
 
 // Valide les champs scalaires d'une commande (mannes + flags). Renvoie un message ou null.
 function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
@@ -24,22 +25,6 @@ function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, 
 function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
   if (!id_client || typeof id_client !== 'string') return 'id_client est requis.';
   return validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
-}
-
-// Valide le corps de la répartition d'emplacements. Renvoie un message ou null.
-function validerEmplacements(emplacements) {
-  if (!Array.isArray(emplacements) || emplacements.length === 0) {
-    return 'emplacements doit être un tableau non vide.';
-  }
-  for (const e of emplacements) {
-    if (!e || typeof e.id_emplacement !== 'string' || !e.id_emplacement) {
-      return 'Chaque emplacement doit avoir un id_emplacement.';
-    }
-    if (!Number.isInteger(e.nombre_mannes) || e.nombre_mannes < 1) {
-      return 'nombre_mannes doit être un entier ≥ 1.';
-    }
-  }
-  return null;
 }
 
 // Fabrique : routeur commandes alimenté par le pool pg fourni.
@@ -237,50 +222,15 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         return res.status(404).json({ message: 'Commande introuvable.' });
       }
 
-      const attendu = cmd.rows[0].nombre_mannes;
-      const total = emplacements.reduce((s, e) => s + e.nombre_mannes, 0);
-      if (total !== attendu) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          message: `${total} manne(s) placée(s) pour ${attendu} attendue(s).`,
-        });
-      }
-
-      // Invariant : chaque étagère cible (hors sol) ne peut appartenir qu'à un seul client.
-      const clientCmd = cmd.rows[0].id_client;
-      const ciblesDistinctes = [...new Set(emplacements.map((e) => e.id_emplacement))];
-      for (const idEmp of ciblesDistinctes) {
-        const conflit = await client.query(
-          `SELECT 1
-           FROM commande_emplacement ce
-           JOIN commande c    ON c.id_commande = ce.id_commande
-           JOIN emplacement e ON e.id_emplacement = ce.id_emplacement
-           WHERE ce.id_emplacement = $1
-             AND e.est_au_sol = FALSE
-             AND ce.id_commande <> $2
-             AND c.id_client <> $3
-           LIMIT 1`,
-          [idEmp, req.params.id, clientCmd]
-        );
-        if (conflit.rowCount > 0) {
-          await client.query('ROLLBACK');
-          return res.status(409).json({ message: 'Emplacement occupé par un autre client.' });
-        }
-      }
-
-      await client.query('DELETE FROM commande_emplacement WHERE id_commande = $1', [req.params.id]);
-      for (const e of emplacements) {
-        await client.query(
-          `INSERT INTO commande_emplacement (id_commande, id_emplacement, nombre_mannes)
-           VALUES ($1, $2, $3)`,
-          [req.params.id, e.id_emplacement, e.nombre_mannes]
-        );
-      }
+      await enregistrerPlacement(
+        client, req.params.id, cmd.rows[0].id_client, cmd.rows[0].nombre_mannes, emplacements
+      );
 
       await client.query('COMMIT');
       return res.status(201).json({ id_commande: req.params.id, emplacements });
     } catch (err) {
       await client.query('ROLLBACK');
+      if (err.statut) return res.status(err.statut).json({ message: err.message });
       if (err.code === '23503') {
         return res.status(400).json({ message: 'Emplacement introuvable.' });
       }
