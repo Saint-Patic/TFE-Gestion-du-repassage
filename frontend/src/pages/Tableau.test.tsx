@@ -11,6 +11,8 @@ vi.mock('../api/commandes', () => ({
   mettreEnPause: vi.fn(),
   reprendreRepassage: vi.fn(),
   definirCintresEntreprise: vi.fn(),
+  resoudreScan: vi.fn(),
+  cloturerRepassage: vi.fn(),
 }));
 vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
@@ -25,7 +27,7 @@ const fauxSocket = {
 vi.mock('../temps-reel/socket', () => ({ obtenirSocket: () => fauxSocket }));
 
 import { Tableau } from './Tableau';
-import { listerCommandes, demarrerRepassage } from '../api/commandes';
+import { listerCommandes, demarrerRepassage, resoudreScan, cloturerRepassage } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { useAuth } from '../auth/AuthContext';
 
@@ -52,6 +54,13 @@ beforeEach(() => {
   vi.mocked(listerCommandes).mockReset().mockResolvedValue(commandes);
   vi.mocked(listerEmplacements).mockReset().mockResolvedValue([]);
   vi.mocked(demarrerRepassage).mockReset().mockResolvedValue(commandes[0]);
+  // Défaut « démarrer » : sans lui, le test existant de démarrage recevrait undefined
+  // de resoudreScan et la déstructuration lèverait.
+  vi.mocked(resoudreScan).mockReset().mockResolvedValue({
+    action: 'demarrer',
+    commande: { id_commande: 'c1', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 2 },
+  } as never);
+  vi.mocked(cloturerRepassage).mockReset().mockResolvedValue(commandes[0] as never);
   connecte('repasseuse');
 });
 
@@ -84,5 +93,31 @@ describe('Tableau', () => {
     rendre();
     await screen.findByText('À faire');
     expect(screen.queryByPlaceholderText('Scanner le client')).not.toBeInTheDocument();
+  });
+
+  test('scan d’une commande en cours → phase de placement (US #260)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue({
+      action: 'cloturer',
+      commande: { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2 },
+    } as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    expect(await screen.findByText(/reste/i)).toBeInTheDocument();
+    expect(demarrerRepassage).not.toHaveBeenCalled();
+  });
+
+  test('Annuler pendant la clôture revient au Kanban sans rien écrire (US #260)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue({
+      action: 'cloturer',
+      commande: { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2 },
+    } as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText(/reste/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler la clôture' }));
+    expect(screen.queryByText(/reste/i)).not.toBeInTheDocument();
+    expect(cloturerRepassage).not.toHaveBeenCalled();
   });
 });
