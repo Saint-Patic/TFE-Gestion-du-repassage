@@ -1,5 +1,4 @@
 .env
-.env.example
 CLAUDE.local.md
 
 node_modules/
