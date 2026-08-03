@@ -3,6 +3,9 @@ const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
 const { calculerTempsRepassageS } = require('../commandes/temps');
 const { validerEmplacements, enregistrerPlacement } = require('../commandes/placement');
+const { transitionValide } = require('../commandes/transitions');
+const { mettreEnFileSms } = require('../sms/file');
+const { construireMessagePret } = require('../sms/gabarit');
 
 // Valide les champs scalaires d'une commande (mannes + flags). Renvoie un message ou null.
 function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
@@ -155,6 +158,85 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       return res.status(200).json(maj.rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Clôture d'un repassage : « en cours → fait » en UNE SEULE transaction —
+  // timer arrêté, mannes replacées sur les étagères, historique tracé, SMS déposé en file.
+  // Si une étape échoue, le ROLLBACK annule tout : aucun SMS pour une clôture qui n'a pas abouti.
+  routeur.post('/:id/cloturer', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    const { emplacements } = req.body || {};
+    const erreur = validerEmplacements(emplacements);
+    if (erreur) return res.status(400).json({ message: erreur });
+
+    const idRepasseuse = req.utilisateur.id_utilisateur;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const cur = await client.query(
+        `SELECT id_client, nombre_mannes, statut, temps_repassage_s, repassage_debut
+         FROM commande WHERE id_commande = $1 AND id_repasseuse = $2 FOR UPDATE`,
+        [req.params.id, idRepasseuse]
+      );
+      if (cur.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Commande introuvable.' });
+      }
+      const commande = cur.rows[0];
+
+      // Garde de transition (#228) : couvre « pas en cours » comme « déjà clôturée ».
+      if (!transitionValide(commande.statut, 'fait')) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est plus en cours." });
+      }
+
+      // Temps final (#225) : cumul + segment courant, puis le chrono s'arrête.
+      const temps = calculerTempsRepassageS(
+        commande.temps_repassage_s, commande.repassage_debut, new Date()
+      );
+
+      const maj = await client.query(
+        `UPDATE commande SET statut='fait', temps_repassage_s=$2, repassage_debut=NULL
+         WHERE id_commande=$1 AND statut='en_cours'
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client,
+                   cintres_entr_rendus, cintres_entr_nb, date_reception, id_repasseuse,
+                   repassage_debut, temps_repassage_s`,
+        [req.params.id, temps]
+      );
+      // Le FOR UPDATE ci-dessus verrouille la ligne, donc ce cas ne devrait pas survenir ;
+      // la condition reste comme filet si le verrou disparaissait un jour. Pas du code mort.
+      if (maj.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est plus en cours." });
+      }
+
+      await enregistrerPlacement(
+        client, req.params.id, commande.id_client, commande.nombre_mannes, emplacements
+      );
+
+      await client.query(
+        `INSERT INTO historique_statut (id_commande, ancien_statut, nouveau_statut, id_utilisateur)
+         VALUES ($1, 'en_cours', 'fait', $2)`,
+        [req.params.id, idRepasseuse]
+      );
+
+      // Dépôt du SMS DANS la transaction (#250) : pas de clôture, pas de SMS.
+      await mettreEnFileSms(client, req.params.id, construireMessagePret());
+
+      await client.query('COMMIT');
+      // Diffusion APRÈS le COMMIT : notifier avant annoncerait un état que la base peut annuler.
+      diffuserMaj(maj.rows[0].id_repasseuse);
+      return res.json(maj.rows[0]);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      if (err.statut) return res.status(err.statut).json({ message: err.message });
+      if (err.code === '23503') {
+        return res.status(400).json({ message: 'Emplacement introuvable.' });
+      }
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
       client.release();
