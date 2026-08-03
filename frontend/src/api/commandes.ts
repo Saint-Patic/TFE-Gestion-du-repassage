@@ -79,3 +79,21 @@ export function mettreEnPause(id: string): Promise<Commande> {
 export function reprendreRepassage(id: string): Promise<Commande> {
   return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/reprendre`, { method: 'POST' });
 }
+
+// Résout l'action à effectuer pour un scan client : clôturer la commande en cours, sinon démarrer.
+export function resoudreScan(
+  codeBarre: string
+): Promise<{ action: 'demarrer' | 'cloturer'; commande: Commande }> {
+  return requeteApi(`/commandes/a-scanner/${encodeURIComponent(codeBarre)}`);
+}
+
+// Clôture un repassage : « fait » + emplacements + SMS, en une seule transaction côté serveur.
+export function cloturerRepassage(
+  id: string,
+  lignes: { id_emplacement: string; nombre_mannes: number }[]
+): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/cloturer`, {
+    method: 'POST',
+    body: JSON.stringify({ emplacements: lignes }),
+  });
+}
