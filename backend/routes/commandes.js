@@ -48,7 +48,10 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       let filtreRepasseuse = '';
       if (req.utilisateur.role === 'repasseuse') {
         params.push(req.utilisateur.id_utilisateur);
-        filtreRepasseuse = ` AND c.id_repasseuse = $${params.length}`;
+        // « Fait » et « Récupéré » sont collectifs depuis le #280 : la remise au comptoir n'appartient
+        // à personne en particulier, et on doit voir ce qu'on a le droit de remettre. `recupere` est
+        // inclus volontairement, sans quoi la carte disparaîtrait juste après la remise.
+        filtreRepasseuse = ` AND (c.statut IN ('fait','recupere') OR c.id_repasseuse = $${params.length})`;
       }
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
