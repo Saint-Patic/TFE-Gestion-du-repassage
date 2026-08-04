@@ -370,3 +370,106 @@ describe('Validation du téléphone (US #270)', () => {
     expect(res.status).toBe(201);
   });
 });
+
+describe('GET /api/clients/:id/historique (US #290)', () => {
+  const clientRow = { id_client: UUID_TEST, nom: 'Dupont', prenom: 'Marie' };
+  const cmd = (id, date) => ({
+    id_commande: id, statut: 'recupere', nombre_mannes: 3, prioritaire: false,
+    cintres_client: false, cintres_entr_rendus: false, cintres_entr_nb: null,
+    temps_repassage_s: 1840, date_reception: date, date_recuperation: date,
+  });
+  const evt = (idCommande, nouveau, qui) => ({
+    id_commande: idCommande, ancien_statut: 'a_faire', nouveau_statut: nouveau,
+    horodatage: '2026-08-01T10:00:00Z', utilisateur: qui,
+  });
+
+  // Faux pool : répond selon la table interrogée, et mémorise les appels.
+  function poolHistorique({ client = clientRow, commandes = [], evenements = [] }) {
+    const appels = [];
+    const pool = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        if (/FROM client WHERE id_client/i.test(sql)) {
+          return client ? { rowCount: 1, rows: [client] } : { rowCount: 0, rows: [] };
+        }
+        if (/FROM historique_statut/i.test(sql)) {
+          return { rowCount: evenements.length, rows: evenements };
+        }
+        if (/FROM commande/i.test(sql)) {
+          return { rowCount: commandes.length, rows: commandes };
+        }
+        return { rowCount: 0, rows: [] };
+      },
+    };
+    return { pool, appels };
+  }
+
+  test('sans jeton → 401', async () => {
+    const { pool } = poolHistorique({});
+    const res = await request(creerApp(pool)).get(`/api/clients/${UUID_TEST}/historique`);
+    expect(res.status).toBe(401);
+  });
+
+  test('repasseuse → 403 (outil de gérante)', async () => {
+    const { pool } = poolHistorique({});
+    const res = await request(creerApp(pool))
+      .get(`/api/clients/${UUID_TEST}/historique`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('cliente inexistante → 404', async () => {
+    const { pool } = poolHistorique({ client: null });
+    const res = await request(creerApp(pool))
+      .get(`/api/clients/${UUID_TEST}/historique`)
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test('cliente sans commande → 200 et liste vide, sans interroger historique_statut', async () => {
+    const { pool, appels } = poolHistorique({ commandes: [] });
+    const res = await request(creerApp(pool))
+      .get(`/api/clients/${UUID_TEST}/historique`)
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.commandes).toEqual([]);
+    expect(res.body.client.nom).toBe('Dupont');
+    expect(appels.some((a) => /FROM historique_statut/i.test(a.sql))).toBe(false);
+  });
+
+  test('regroupe chaque événement sous SA commande, tableau vide si aucun', async () => {
+    const { pool } = poolHistorique({
+      commandes: [cmd('c1', '2026-08-03'), cmd('c2', '2026-08-02'), cmd('c3', '2026-08-01')],
+      evenements: [evt('c1', 'en_cours', 'Sophie'), evt('c1', 'fait', 'Sophie'), evt('c2', 'en_cours', 'Julie')],
+    });
+    const res = await request(creerApp(pool))
+      .get(`/api/clients/${UUID_TEST}/historique`)
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.commandes[0].evenements).toHaveLength(2);
+    expect(res.body.commandes[1].evenements).toHaveLength(1);
+    expect(res.body.commandes[2].evenements).toEqual([]);
+    expect(res.body.commandes[1].evenements[0].utilisateur).toBe('Julie');
+  });
+
+  test("une SEULE requête d'événements quel que soit le nombre de commandes (anti N+1)", async () => {
+    const { pool, appels } = poolHistorique({
+      commandes: [cmd('c1', '2026-08-03'), cmd('c2', '2026-08-02'), cmd('c3', '2026-08-01')],
+      evenements: [evt('c1', 'fait', 'Sophie')],
+    });
+    await request(creerApp(pool))
+      .get(`/api/clients/${UUID_TEST}/historique`)
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(appels.filter((a) => /FROM historique_statut/i.test(a.sql))).toHaveLength(1);
+    expect(appels).toHaveLength(3); // client + commandes + événements
+  });
+
+  test('commandes triées de la plus récente à la plus ancienne', async () => {
+    const { pool, appels } = poolHistorique({ commandes: [cmd('c1', '2026-08-03')] });
+    await request(creerApp(pool))
+      .get(`/api/clients/${UUID_TEST}/historique`)
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    const req = appels.find((a) => /FROM commande/i.test(a.sql));
+    expect(req.sql).toMatch(/ORDER BY date_reception DESC/i);
+  });
+});
