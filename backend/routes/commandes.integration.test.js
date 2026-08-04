@@ -896,3 +896,102 @@ describe('GET /api/commandes — client_mobile (US #270)', () => {
     expect(sqlVue).toMatch(/\^04\[0-9\]\{8\}\$/);
   });
 });
+
+describe('POST /api/commandes/:id/recuperer (US #280)', () => {
+  const ligneRecuperee = {
+    id_commande: UUID_CMD, id_client: UUID_CLIENT, statut: 'recupere', nombre_mannes: 3,
+    prioritaire: false, date_reception: 'x', id_repasseuse: UUID_REPASSEUSE,
+    date_recuperation: 'maintenant',
+  };
+
+  // Faux pool transactionnel pour la remise.
+  // options : { statut: 'fait'|'en_cours'|null, majRowCount=1 }
+  function poolRecuperer(options) {
+    const appels = [];
+    const client = {
+      query: async (sql, params) => {
+        appels.push({ sql, params });
+        if (/^\s*(BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return {};
+        if (/SELECT statut FROM commande/i.test(sql)) {
+          return options.statut
+            ? { rowCount: 1, rows: [{ statut: options.statut }] }
+            : { rowCount: 0, rows: [] };
+        }
+        if (/UPDATE commande SET statut='recupere'/i.test(sql)) {
+          const n = options.majRowCount === undefined ? 1 : options.majRowCount;
+          return { rowCount: n, rows: n ? [ligneRecuperee] : [] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      release: () => {},
+    };
+    return { appels, pool: { query: async () => ({ rows: [] }), connect: async () => client } };
+  }
+
+  test('sans jeton → 401', async () => {
+    const f = poolRecuperer({ statut: 'fait' });
+    const res = await request(creerApp(f.pool)).post(`/api/commandes/${UUID_CMD}/recuperer`);
+    expect(res.status).toBe(401);
+  });
+
+  test('gérante → 403', async () => {
+    const f = poolRecuperer({ statut: 'fait' });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/recuperer`)
+      .set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(403);
+  });
+
+  test('commande inexistante → 404', async () => {
+    const f = poolRecuperer({ statut: null });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/recuperer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("commande qui n'est pas « fait » → 409 (transitionValide refuse)", async () => {
+    const f = poolRecuperer({ statut: 'en_cours' });
+    const res = await request(creerApp(f.pool))
+      .post(`/api/commandes/${UUID_CMD}/recuperer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(409);
+    expect(f.appels.some((a) => /DELETE FROM commande_emplacement/i.test(a.sql))).toBe(false);
+  });
+
+  test('succès → 200 : récupéré, date posée, étagère libérée, historique, diffusion après COMMIT', async () => {
+    let appelsALaDiffusion = -1;
+    const f = poolRecuperer({ statut: 'fait' });
+    const spy = jest.fn(() => { appelsALaDiffusion = f.appels.length; });
+    const res = await request(creerApp(f.pool, spy))
+      .post(`/api/commandes/${UUID_CMD}/recuperer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.statut).toBe('recupere');
+
+    const maj = f.appels.find((a) => /UPDATE commande SET statut='recupere'/i.test(a.sql));
+    expect(maj.sql).toMatch(/date_recuperation=now\(\)/i);
+    expect(maj.sql).toMatch(/statut='fait'/i);
+
+    const del = f.appels.find((a) => /DELETE FROM commande_emplacement/i.test(a.sql));
+    expect(del.params).toEqual([UUID_CMD]);
+
+    const hist = f.appels.find((a) => /INSERT INTO historique_statut/i.test(a.sql));
+    expect(hist.params).toEqual([UUID_CMD, UUID_REPASSEUSE]);
+
+    const indexCommit = f.appels.findIndex((a) => /^\s*COMMIT/i.test(a.sql));
+    expect(indexCommit).toBeGreaterThan(-1);
+    expect(appelsALaDiffusion).toBeGreaterThan(indexCommit);
+  });
+
+  test('remise NON scopée : la requête ne filtre pas sur id_repasseuse (US #280)', async () => {
+    const f = poolRecuperer({ statut: 'fait' });
+    await request(creerApp(f.pool, jest.fn()))
+      .post(`/api/commandes/${UUID_CMD}/recuperer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    const select = f.appels.find((a) => /SELECT statut FROM commande/i.test(a.sql));
+    expect(select.params).toEqual([UUID_CMD]);
+    expect(select.sql).not.toMatch(/id_repasseuse/i);
+  });
+});
