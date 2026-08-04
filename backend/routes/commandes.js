@@ -31,6 +31,10 @@ function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client
   return validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
 }
 
+// Correspondance statut courant → action à proposer au scan. Table plutôt que ternaires
+// imbriqués : il y a désormais trois branches.
+const ACTIONS = { fait: 'recuperer', en_cours: 'cloturer', a_faire: 'demarrer' };
+
 // Fabrique : routeur commandes alimenté par le pool pg fourni.
 // diffuserMaj(idRepasseuse) : notifie le temps réel (défaut no-op → testable sans Socket.IO).
 function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
@@ -66,17 +70,22 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
   });
 
   // Résout l'action à effectuer pour un scan de code-barres client. LECTURE PURE : ne modifie rien.
-  // Priorité « en cours » d'abord : on termine ce qu'on a commencé avant d'en démarrer une autre,
-  // ce qui rend impossible le cas d'une cliente ayant à la fois une commande à faire et une en cours.
+  // DOUBLE PÉRIMÈTRE : une commande « fait » est trouvée quelle que soit la repasseuse (la remise au
+  // comptoir est collective), tandis que « en cours » et « à faire » restent limitées aux siennes.
+  // Priorité : remettre d'abord (la cliente est devant vous), puis terminer, puis démarrer.
   routeur.get('/a-scanner/:code_barre', authentifier, exigerRole('repasseuse'), async (req, res) => {
     try {
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes, c.prioritaire,
-                c.date_reception, c.id_repasseuse, c.temps_repassage_s, c.repassage_debut
+                c.date_reception, c.id_repasseuse, c.temps_repassage_s, c.repassage_debut,
+                cl.nom AS client_nom, cl.prenom AS client_prenom
          FROM commande c
          JOIN client cl ON cl.id_client = c.id_client
-         WHERE cl.code_barre = $1 AND c.id_repasseuse = $2 AND c.statut IN ('en_cours','a_faire')
-         ORDER BY (c.statut = 'en_cours') DESC, c.prioritaire DESC, c.date_reception ASC
+         WHERE cl.code_barre = $1
+           AND ( c.statut = 'fait'
+              OR (c.statut IN ('en_cours','a_faire') AND c.id_repasseuse = $2) )
+         ORDER BY (c.statut = 'fait') DESC, (c.statut = 'en_cours') DESC,
+                  c.prioritaire DESC, c.date_reception ASC
          LIMIT 1`,
         [req.params.code_barre, req.utilisateur.id_utilisateur]
       );
@@ -84,7 +93,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         return res.status(404).json({ message: 'Aucune commande active pour ce client.' });
       }
       const commande = resultat.rows[0];
-      return res.json({ action: commande.statut === 'en_cours' ? 'cloturer' : 'demarrer', commande });
+      return res.json({ action: ACTIONS[commande.statut], commande });
     } catch {
       return res.status(500).json({ message: 'Erreur serveur.' });
     }
