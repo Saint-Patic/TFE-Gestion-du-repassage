@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage, definirCintresEntreprise, resoudreScan, cloturerRepassage } from '../api/commandes';
+import { listerCommandes, demarrerRepassage, mettreEnPause, reprendreRepassage, definirCintresEntreprise, resoudreScan, cloturerRepassage, marquerRecuperee } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { obtenirSocket } from '../temps-reel/socket';
 import { useAuth } from '../auth/AuthContext';
@@ -9,6 +9,7 @@ import { ErreurApi } from '../api/client';
 import type { Commande, CommandeCarte, Emplacement } from '../api/types';
 import { CarteCommande } from '../composants/CarteCommande';
 import { ModaleModifierCommande } from '../composants/ModaleModifierCommande';
+import { ModaleConfirmation } from '../composants/ModaleConfirmation';
 import { PlacementMannes } from '../composants/PlacementMannes';
 
 const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
@@ -29,6 +30,7 @@ export function Tableau() {
   const [message, setMessage] = useState<string | null>(null);
   const champScan = useRef<HTMLInputElement>(null);
   const [aCloturer, setACloturer] = useState<Commande | null>(null);
+  const [aRemettre, setARemettre] = useState<CommandeCarte | null>(null);
 
   // Préchargement des 42 emplacements pour la modale de re-placement.
   useEffect(() => {
@@ -57,6 +59,11 @@ export function Tableau() {
         await demarrerRepassage(valeur);
         return; // le Kanban se rafraîchit via le socket commandes:maj
       }
+      if (action === 'recuperer') {
+        // Confirmation obligatoire : « récupéré » est terminal, l'erreur ne se répare pas ici.
+        setARemettre(commande);
+        return;
+      }
       setACloturer(commande); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
     } catch (err) {
       if (err instanceof ErreurApi && err.statut === 404) {
@@ -80,6 +87,18 @@ export function Tableau() {
           ? "Cette commande n'est plus en cours."
           : 'Erreur lors de la clôture.'
       );
+    }
+  }
+
+  async function confirmerRemise() {
+    if (!aRemettre) return;
+    const id = aRemettre.id_commande;
+    setARemettre(null);
+    try {
+      await marquerRecuperee(id);
+      queryClient.invalidateQueries({ queryKey: ['commandes'] });
+    } catch {
+      setMessage('Erreur lors de la remise.');
     }
   }
 
@@ -135,6 +154,16 @@ export function Tableau() {
           </div>
         ))}
       </div>
+
+      {aRemettre && (
+        <ModaleConfirmation
+          titre="Remise au client"
+          message={`Remettre la commande de ${aRemettre.client_prenom} ${aRemettre.client_nom} ?`}
+          libelleAction="Remettre"
+          onConfirmer={confirmerRemise}
+          onAnnuler={() => setARemettre(null)}
+        />
+      )}
 
       {aModifier && (
         <ModaleModifierCommande
