@@ -6,6 +6,7 @@ const { validerEmplacements, enregistrerPlacement } = require('../commandes/plac
 const { transitionValide } = require('../commandes/transitions');
 const { mettreEnFileSms } = require('../sms/file');
 const { construireMessagePret } = require('../sms/gabarit');
+const { estMobile } = require('../clients/telephone');
 
 // Valide les champs scalaires d'une commande (mannes + flags). Renvoie un message ou null.
 function validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus }) {
@@ -49,7 +50,8 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
                 c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.cintres_entr_nb, c.date_reception, c.id_repasseuse,
                 c.repassage_debut, c.temps_repassage_s,
-                cl.nom AS client_nom, cl.prenom AS client_prenom
+                cl.nom AS client_nom, cl.prenom AS client_prenom,
+                (cl.telephone ~ '^04[0-9]{8}$') AS client_mobile
          FROM commande c
          JOIN client cl ON cl.id_client = c.id_client
          WHERE ( c.statut IN ('a_faire', 'en_cours', 'fait')
@@ -178,8 +180,12 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       await client.query('BEGIN');
 
       const cur = await client.query(
-        `SELECT id_client, nombre_mannes, statut, temps_repassage_s, repassage_debut
-         FROM commande WHERE id_commande = $1 AND id_repasseuse = $2 FOR UPDATE`,
+        `SELECT c.id_client, c.nombre_mannes, c.statut, c.temps_repassage_s, c.repassage_debut,
+                cl.telephone
+         FROM commande c
+         JOIN client cl ON cl.id_client = c.id_client
+         WHERE c.id_commande = $1 AND c.id_repasseuse = $2
+         FOR UPDATE OF c`,
         [req.params.id, idRepasseuse]
       );
       if (cur.rowCount === 0) {
@@ -225,7 +231,11 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       );
 
       // Dépôt du SMS DANS la transaction (#250) : pas de clôture, pas de SMS.
-      await mettreEnFileSms(client, req.params.id, construireMessagePret());
+      // Un fixe ne peut pas recevoir de SMS : la cliente sera appelée manuellement (#270).
+      // On ne dépose alors AUCUNE ligne, plutôt qu'une qui resterait éternellement en attente.
+      if (estMobile(commande.telephone)) {
+        await mettreEnFileSms(client, req.params.id, construireMessagePret());
+      }
 
       await client.query('COMMIT');
       // Diffusion APRÈS le COMMIT : notifier avant annoncerait un état que la base peut annuler.
