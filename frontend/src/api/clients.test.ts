@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { creerClient, listerClients, modifierClient, supprimerClient } from './clients';
+import { creerClient, listerClients, modifierClient, supprimerClient, historiqueClient } from './clients';
 import { definirFournisseurJeton } from './client';
 
 beforeEach(() => {
@@ -55,5 +55,16 @@ describe('listerClients / modifierClient / supprimerClient', () => {
     expect(url).toBe('/api/clients/abc');
     expect(options.method).toBe('DELETE');
     expect(r.anonymise).toBe(false);
+  });
+});
+
+describe('historiqueClient (US #290)', () => {
+  test('GET /api/clients/:id/historique', async () => {
+    const data = { client: { id_client: 'cl1', nom: 'Dupont', prenom: 'Marie' }, commandes: [] };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(data), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const r = await historiqueClient('cl1');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/clients/cl1/historique');
+    expect(r.client.nom).toBe('Dupont');
   });
 });
