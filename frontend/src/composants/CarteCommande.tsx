@@ -15,6 +15,11 @@ export function CarteCommande({ commande, onModifier, onPause, onReprendre, onCi
   return (
     <div className={`flex flex-col gap-1 rounded border p-2 ${commande.prioritaire ? 'border-red-500 bg-red-50' : ''}`}>
       <span className="font-semibold">{commande.client_prenom} {commande.client_nom}</span>
+      {/* Cliente sans mobile : aucun SMS n'a été envoyé, il faut l'appeler (#270).
+          Le test `=== false` évite de marquer toutes les cartes quand le champ est absent. */}
+      {commande.statut === 'fait' && commande.client_mobile === false && (
+        <span className="self-start rounded bg-amber-100 px-2 py-0.5 text-sm">à appeler</span>
+      )}
       <span>{commande.nombre_mannes} manne(s)</span>
       {commande.statut === 'en_cours' && (
         <Chrono debut={commande.repassage_debut} cumul={commande.temps_repassage_s} />

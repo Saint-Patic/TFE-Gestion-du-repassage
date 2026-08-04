@@ -51,10 +51,11 @@ node scripts/ajouter-cintres-entr-rendus.js
 Sortie attendue : `Colonne cintres_entr_rendus : présente (ajoutée si nécessaire).` Rejouable sans
 risque. Le script lit les identifiants de la base dans `backend/.env`.
 
-## Migrations à jouer après un déploiement (rattrapage)
+## Migrations de base de données (ordre d'exécution)
 
-Ces migrations existaient sans être documentées ici. Toutes sont **idempotentes** (rejouables sans
-risque) et se lancent depuis `/opt/manne/backend`, dans cet ordre :
+Liste complète des migrations, dans l'ordre. Toutes sont **idempotentes** (rejouables sans risque) et se
+lancent depuis `/opt/manne/backend`. Utile pour une installation neuve comme pour vérifier qu'un
+serveur existant est à jour :
 
 ```bash
 cd /opt/manne/backend
@@ -86,11 +87,14 @@ le passage de certbot, **ne pas re-copier** ce fichier par-dessus la conf serveu
 on écrase la configuration TLS. Les mises à jour applicatives (`git pull` + rebuild +
 `systemctl restart manne-backend`) ne touchent pas à la conf nginx.
 
-## Passerelle SMS (US #240)
+## Passerelle SMS (US #240, mise en service #270)
 
-Le backend ne peut pas joindre le téléphone de l'atelier (NAT domestique) : c'est **la passerelle qui
-vient chercher** les SMS à envoyer, en HTTPS sortant. Aucun port n'est à ouvrir chez la gérante, et un
-SMS déposé pendant que le téléphone est éteint partira au rallumage.
+Le backend ne peut pas joindre le téléphone (NAT domestique, et le téléphone n'est pas toujours sur
+place) : c'est **la passerelle qui vient chercher** les SMS à envoyer, en HTTPS sortant. Aucun port
+n'est à ouvrir, et un SMS déposé pendant que le téléphone est éteint partira au rallumage.
+
+**Le téléphone peut quitter le local** — le soir, le week-end — **sans aucune reconfiguration** :
+l'appel étant sortant, la passerelle fonctionne à l'identique sur le Wi-Fi de l'atelier et en 4G.
 
 ### Côté VPS
 
@@ -107,20 +111,58 @@ Le jeton est révocable à tout moment : on le change des deux côtés et on red
 
 ### Côté téléphone Android
 
-1. Installer **Termux** et **Termux:API** depuis **F-Droid** — les versions du Play Store sont
-   obsolètes et l'API SMS n'y fonctionne pas.
-2. Dans Termux : `pkg install nodejs git`, puis `pkg install termux-api`. Accorder la permission SMS
-   à Termux:API.
-3. Copier le dossier `passerelle-sms/` sur le téléphone, puis `npm install --omit=dev`.
-4. Créer `.env` à partir de `.env.example` : `URL_API=https://vps-a87c8d0b.vps.ovh.net`, le même
-   `JETON_PASSERELLE` que le VPS, et `MODE_ENVOI=console` tant que la validation matérielle (#340)
-   n'est pas faite.
-5. **Exclure Termux de l'optimisation de batterie** (Android → Batterie → applications non
+1. Installer **F-Droid** (il faut autoriser l'installation depuis une source inconnue).
+2. Depuis F-Droid, installer **Termux**, **Termux:API** et **Termux:Boot**.
+   ⚠️ **Uniquement depuis F-Droid** : les versions du Play Store sont abandonnées et l'API SMS n'y
+   fonctionne plus.
+3. Dans Termux :
+
+   ```bash
+   pkg install nodejs git termux-api
+   git clone https://github.com/Saint-Patic/TFE-Gestion-du-repassage
+   cd TFE-Gestion-du-repassage/passerelle-sms
+   npm install --omit=dev
+   cp .env.example .env
+   ```
+
+   Le dépôt étant public, `git clone` est bien plus commode qu'un transfert de fichiers.
+4. Renseigner `.env` : `URL_API=https://vps-a87c8d0b.vps.ovh.net`, le **même** `JETON_PASSERELLE` que
+   le VPS, et `MODE_ENVOI=console` pour la première mise en route.
+5. Accorder la **permission SMS** à Termux:API, sinon `termux-sms-send` échoue.
+6. **Exclure Termux de l'optimisation de batterie** (Android → Batterie → applications non
    optimisées), sans quoi le mode Doze suspend la boucle après quelques minutes d'écran éteint.
-6. Démarrer : `npm start`.
+7. Premier démarrage manuel, pour vérifier : `npm start`.
+
+### Démarrage automatique (Termux:Boot)
+
+Le téléphone sera éteint et rallumé régulièrement. Pour que la passerelle reparte seule, créer
+`~/.termux/boot/demarrer-passerelle.sh` :
+
+```sh
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+cd ~/TFE-Gestion-du-repassage/passerelle-sms
+node index.js >> ~/passerelle.log 2>&1
+```
+
+Puis le rendre exécutable : `chmod +x ~/.termux/boot/demarrer-passerelle.sh`
+
+Deux lignes de ce script ne sont pas cosmétiques :
+
+- **`termux-wake-lock`** empêche Android d'endormir le processus dès l'écran éteint. Sans lui, les SMS
+  partent avec des heures de retard, sans qu'aucune erreur n'apparaisse.
+- **Le `cd`** est tout aussi obligatoire : `index.js` charge sa configuration avec `dotenv`, qui lit le
+  `.env` du **répertoire courant**. Lancé depuis ailleurs — ce que fait Termux:Boot par défaut — le
+  programme ne trouverait ni `URL_API` ni `JETON_PASSERELLE` et s'arrêterait sur son contrôle de
+  démarrage, avec un message trompeur puisque le fichier existe bel et bien.
+
+Le journal s'accumule dans `~/passerelle.log`, consultable par `tail -f ~/passerelle.log`.
 
 ### Bascule en envoi réel
 
-Elle appartient au **#340** (checklist matérielle) : passer `MODE_ENVOI=sms` et vérifier qu'une
-cliente reçoit effectivement le message. Tant que `MODE_ENVOI=console`, la passerelle vide la file et
-journalise les envois **sans consommer de SMS**.
+Une fois la mise en route validée en `MODE_ENVOI=console` — la passerelle vide la file et journalise
+les envois **sans consommer de SMS** —, passer `MODE_ENVOI=sms` dans le `.env` et relancer.
+
+Toujours faire la première mise en route en `console` : c'est ce qui valide le jeton et la connexion au
+VPS **avant** de consommer un vrai SMS. Un refus d'authentification apparaît alors comme
+`Appel /en-attente refusé (HTTP 401)` dans le journal.

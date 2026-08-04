@@ -90,4 +90,14 @@ describe('CarteCommande', () => {
     render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} onCintresEntreprise={vi.fn()} />);
     expect(screen.queryByLabelText(/Cintres entreprise/i)).not.toBeInTheDocument();
   });
+
+  test('carte « fait » sans mobile → badge « à appeler » (US #270)', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'fait' as const, client_mobile: false }} />);
+    expect(screen.getByText(/à appeler/i)).toBeInTheDocument();
+  });
+
+  test('carte « fait » avec mobile → pas de badge (US #270)', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'fait' as const, client_mobile: true }} />);
+    expect(screen.queryByText(/à appeler/i)).not.toBeInTheDocument();
+  });
 });
