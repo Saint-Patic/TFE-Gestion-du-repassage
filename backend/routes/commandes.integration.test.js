@@ -717,14 +717,35 @@ describe('GET /api/commandes/a-scanner/:code_barre (US #260)', () => {
     expect(res.status).toBe(404);
   });
 
-  test('recherche scopée à la repasseuse, « en cours » prioritaire dans le tri', async () => {
+  test('double périmètre : « fait » collectif, « en cours »/« à faire » scopés (US #280)', async () => {
     const { pool, appels } = poolResolution([cmdEnCours]);
     await request(creerApp(pool))
       .get('/api/commandes/a-scanner/ABC')
       .set('Authorization', `Bearer ${jetonRepasseuse()}`);
     expect(appels[0].params).toEqual(['ABC', UUID_REPASSEUSE]);
-    expect(appels[0].sql).toMatch(/statut IN \('en_cours','a_faire'\)/i);
-    expect(appels[0].sql).toMatch(/ORDER BY \(c\.statut = 'en_cours'\) DESC/i);
+    expect(appels[0].sql).toMatch(/c\.statut = 'fait'/i);
+    expect(appels[0].sql).toMatch(/c\.statut IN \('en_cours','a_faire'\) AND c\.id_repasseuse = \$2/i);
+    expect(appels[0].sql).toMatch(/ORDER BY \(c\.statut = 'fait'\) DESC/i);
+  });
+
+  test('commande prête → action recuperer (US #280)', async () => {
+    const { pool } = poolResolution([{ ...cmdEnCours, statut: 'fait' }]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('recuperer');
+  });
+
+  test('expose le nom de la cliente pour la confirmation (US #280)', async () => {
+    const { pool, appels } = poolResolution([
+      { ...cmdEnCours, statut: 'fait', client_nom: 'Dupont', client_prenom: 'Marie' },
+    ]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.body.commande.client_nom).toBe('Dupont');
+    expect(appels[0].sql).toMatch(/cl\.nom AS client_nom/i);
   });
 });
 
