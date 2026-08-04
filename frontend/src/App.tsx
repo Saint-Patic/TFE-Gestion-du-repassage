@@ -8,6 +8,7 @@ import { Tableau } from './pages/Tableau';
 import { Reorganisation } from './pages/Reorganisation';
 import { RouteProtegee } from './composants/RouteProtegee';
 import { RouteRole } from './composants/RouteRole';
+import { HistoriqueClient } from './pages/HistoriqueClient';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
       <Route path="/reorganisation" element={<RouteProtegee><RouteRole roles={['repasseuse']}><Reorganisation /></RouteRole></RouteProtegee>} />
       <Route path="/clients/nouveau" element={<RouteProtegee><RouteRole roles={['gerante']}><NouveauClient /></RouteRole></RouteProtegee>} />
       <Route path="/clients" element={<RouteProtegee><RouteRole roles={['gerante']}><Clients /></RouteRole></RouteProtegee>} />
+      <Route path="/clients/:id/historique" element={<RouteProtegee><RouteRole roles={['gerante']}><HistoriqueClient /></RouteRole></RouteProtegee>} />
     </Routes>
   );
 }

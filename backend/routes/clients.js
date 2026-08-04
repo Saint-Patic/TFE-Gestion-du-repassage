@@ -54,6 +54,61 @@ function creerRouteurClients(pool) {
     }
   });
 
+  // Historique complet des commandes d'une cliente, avec la chronologie de leurs changements de
+  // statut. Outil de la gérante pour répondre à une contestation (#290) : c'est ici que la table
+  // historique_statut, écrite depuis le #220, est enfin lue.
+  routeur.get('/:id/historique', authentifier, exigerRole('gerante'), async (req, res) => {
+    try {
+      const client = await pool.query(
+        'SELECT id_client, nom, prenom FROM client WHERE id_client = $1',
+        [req.params.id]
+      );
+      if (client.rowCount === 0) {
+        return res.status(404).json({ message: 'Client introuvable.' });
+      }
+
+      const commandes = await pool.query(
+        `SELECT id_commande, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus,
+                cintres_entr_nb, temps_repassage_s, date_reception, date_recuperation
+         FROM commande
+         WHERE id_client = $1
+         ORDER BY date_reception DESC`,
+        [req.params.id]
+      );
+      if (commandes.rowCount === 0) {
+        return res.json({ client: client.rows[0], commandes: [] });
+      }
+
+      // UNE seule requête pour TOUS les événements : ni jointure dupliquante, ni N+1.
+      const ids = commandes.rows.map((c) => c.id_commande);
+      const evenements = await pool.query(
+        `SELECT h.id_commande, h.ancien_statut, h.nouveau_statut, h.horodatage, u.nom AS utilisateur
+         FROM historique_statut h
+         JOIN utilisateur u ON u.id_utilisateur = h.id_utilisateur
+         WHERE h.id_commande = ANY($1)
+         ORDER BY h.horodatage ASC`,
+        [ids]
+      );
+
+      const parCommande = new Map(ids.map((id) => [id, []]));
+      for (const e of evenements.rows) {
+        parCommande.get(e.id_commande).push({
+          ancien_statut: e.ancien_statut,
+          nouveau_statut: e.nouveau_statut,
+          horodatage: e.horodatage,
+          utilisateur: e.utilisateur,
+        });
+      }
+
+      return res.json({
+        client: client.rows[0],
+        commandes: commandes.rows.map((c) => ({ ...c, evenements: parCommande.get(c.id_commande) })),
+      });
+    } catch {
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    }
+  });
+
   // Crée un client + code-barres unique. Bearer requis (rôle géré plus tard, #110).
   routeur.post('/', authentifier, exigerRole('gerante'), async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
