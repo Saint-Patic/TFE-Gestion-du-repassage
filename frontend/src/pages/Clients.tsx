@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listerClients, modifierClient, supprimerClient } from '../api/clients';
 import type { Client, NouveauClient } from '../api/types';
@@ -48,6 +49,7 @@ export function Clients() {
           <li key={c.id_client} className="flex items-center justify-between py-2">
             <span>{c.nom} {c.prenom} — {c.telephone}</span>
             <span className="flex gap-2">
+              <Link aria-label="Historique du client" className="rounded px-2 py-1" to={`/clients/${c.id_client}/historique`}>🕘</Link>
               <button aria-label="Modifier le client" className="rounded px-2 py-1" onClick={() => setAEditer(c)}>✎</button>
               <button aria-label="Supprimer le client" className="rounded px-2 py-1 text-red-600" onClick={() => setASupprimer(c)}>✕</button>
             </span>

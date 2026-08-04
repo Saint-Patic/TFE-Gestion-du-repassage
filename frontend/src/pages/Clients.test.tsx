@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../api/clients', () => ({
   listerClients: vi.fn(),
@@ -21,7 +22,9 @@ function rendre() {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <Clients />
+      <MemoryRouter>
+        <Clients />
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -60,5 +63,14 @@ describe('Clients', () => {
     await userEvent.click((await screen.findAllByLabelText('Supprimer le client'))[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     expect(supprimerClient).toHaveBeenCalledWith('1');
+  });
+
+  test('chaque ligne porte un lien vers l’historique du client (US #290)', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    rendre();
+    await screen.findByText(/Dupont Marie/);
+    const liens = screen.getAllByLabelText('Historique du client');
+    expect(liens).toHaveLength(2);
+    expect(liens[0]).toHaveAttribute('href', '/clients/1/historique');
   });
 });
