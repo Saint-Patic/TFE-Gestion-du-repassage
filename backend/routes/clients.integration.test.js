@@ -328,3 +328,45 @@ describe('GET /api/clients/code-barre/:code (US #150)', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('Validation du téléphone (US #270)', () => {
+  test('POST avec un numéro sans le zéro initial → 400 sans accès DB', async () => {
+    let db = 0;
+    const app = creerApp({ query: async () => { db++; return { rows: [] }; } });
+    const res = await request(app).post('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send({ ...corpsValide, telephone: '475664101' });
+    expect(res.status).toBe(400);
+    expect(db).toBe(0);
+  });
+
+  test('POST stocke le numéro normalisé (espaces retirés)', async () => {
+    const appels = [];
+    const app = creerApp({
+      query: async (sql, params) => { appels.push({ sql, params }); return { rows: [{ id_client: 'c1' }] }; },
+    });
+    await request(app).post('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send({ ...corpsValide, telephone: '0475 66 41 01' });
+    expect(appels[0].params[2]).toBe('0475664101');
+  });
+
+  test('PUT stocke le numéro normalisé (+32 ramené au national)', async () => {
+    const appels = [];
+    const app = creerApp({
+      query: async (sql, params) => { appels.push({ sql, params }); return { rowCount: 1, rows: [{ id_client: 'c1' }] }; },
+    });
+    await request(app).put(`/api/clients/${UUID_TEST}`)
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send({ ...corpsValide, telephone: '+32475664101' });
+    expect(appels[0].params[2]).toBe('0475664101');
+  });
+
+  test('fixe accepté : la cliente est encodable, elle sera appelée', async () => {
+    const app = creerApp({ query: async () => ({ rows: [{ id_client: 'c1' }] }) });
+    const res = await request(app).post('/api/clients')
+      .set('Authorization', `Bearer ${jetonValide()}`)
+      .send({ ...corpsValide, telephone: '068 12 34 56' });
+    expect(res.status).toBe(201);
+  });
+});
