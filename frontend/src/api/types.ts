@@ -46,6 +46,8 @@ export type Commande = {
 export type CommandeCarte = Commande & {
   client_nom: string;
   client_prenom: string;
+  // Booléen calculé côté serveur : le numéro de la cliente ne transite pas jusqu'ici.
+  client_mobile?: boolean;
 };
 
 export type Emplacement = {
