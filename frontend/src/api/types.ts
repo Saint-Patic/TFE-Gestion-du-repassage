@@ -70,3 +70,27 @@ export type ContenuEmplacement = {
   client_nom: string;
   client_prenom: string;
 };
+
+export type EvenementHistorique = {
+  ancien_statut: string | null;
+  nouveau_statut: string;
+  horodatage: string;
+  utilisateur: string;
+};
+
+export type CommandeHistorique = {
+  id_commande: string;
+  statut: string;
+  nombre_mannes: number;
+  temps_repassage_s: number;
+  date_reception: string;
+  date_recuperation: string | null;
+  evenements: EvenementHistorique[];
+};
+
+// Nom volontairement distinct du composant `HistoriqueClient` (pages/), pour éviter
+// une collision d'import dans ce composant.
+export type HistoriqueDunClient = {
+  client: { id_client: string; nom: string; prenom: string };
+  commandes: CommandeHistorique[];
+};
