@@ -995,3 +995,14 @@ describe('POST /api/commandes/:id/recuperer (US #280)', () => {
     expect(select.sql).not.toMatch(/id_repasseuse/i);
   });
 });
+
+describe('GET /api/commandes — colonnes collectives (US #280)', () => {
+  test('repasseuse : « fait » et « récupéré » échappent au filtre par propriétaire', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/c\.statut IN \('fait','recupere'\) OR c\.id_repasseuse = \$1/i);
+  });
+});

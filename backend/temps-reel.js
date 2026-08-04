@@ -55,11 +55,18 @@ function diffuserA(rooms, evenement, donnees) {
   io.to(rooms).emit(evenement, donnees);
 }
 
-// Fabrique le notificateur de mise à jour de commande :
-// diffuse commandes:maj à l'encodeuse (sa room) + à toutes les gérantes.
+// Fabrique le notificateur de mise à jour de commande : diffuse commandes:maj à l'encodeuse,
+// à toutes les gérantes, ET à toutes les repasseuses — depuis le #280, les colonnes « Fait » et
+// « Récupéré » sont collectives, donc une commande qui y entre concerne tout le monde.
+// Sans risque de fuite : l'événement est un signal VIDE, et chaque client refait un GET /commandes
+// que le serveur filtre de façon autoritative (principe posé au #200).
 function creerDiffuserMaj() {
   return (idRepasseuse) =>
-    diffuserA(['utilisateur:' + idRepasseuse, 'role:gerante'], 'commandes:maj', {});
+    diffuserA(
+      ['utilisateur:' + idRepasseuse, 'role:gerante', 'role:repasseuse'],
+      'commandes:maj',
+      {}
+    );
 }
 
 module.exports = { initialiserTempsReel, diffuser, diffuserA, creerDiffuserMaj };

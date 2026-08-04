@@ -16,6 +16,16 @@ function jetonRepasseuse() {
   });
 }
 
+const UUID_AUTRE_REPASSEUSE = '55555555-5555-5555-5555-555555555555';
+
+function jetonAutreRepasseuse() {
+  return signerJeton({
+    id_utilisateur: UUID_AUTRE_REPASSEUSE,
+    role: 'repasseuse',
+    session_debut: Math.floor(Date.now() / 1000),
+  });
+}
+
 // Faux pool transactionnel pour POST /commandes/demarrer, capturant les requêtes.
 function fauxPoolDemarrer() {
   const appels = [];
@@ -84,4 +94,26 @@ test('scan → écrit en DB (en_cours + historique) et diffuse commandes:maj re�
   });
 
   client.on('connect_error', (err) => { client.close(); done(err); });
+});
+
+test('une AUTRE repasseuse reçoit aussi commandes:maj (colonnes collectives, US #280)', (done) => {
+  const autre = clientIo(`http://localhost:${port}`, {
+    auth: { jeton: jetonAutreRepasseuse() },
+    reconnection: false,
+    transports: ['websocket'],
+  });
+
+  autre.on('connect', () => {
+    autre.on('commandes:maj', () => { autre.close(); done(); });
+
+    setTimeout(() => {
+      request(app)
+        .post('/api/commandes/demarrer')
+        .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+        .send({ code_barre: 'ABC' })
+        .catch((err) => { autre.close(); done(err); });
+    }, 60);
+  });
+
+  autre.on('connect_error', (err) => { autre.close(); done(err); });
 });
