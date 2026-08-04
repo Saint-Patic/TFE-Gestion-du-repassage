@@ -2,15 +2,20 @@ const express = require('express');
 const authentifier = require('../middlewares/authentifier');
 const exigerRole = require('../middlewares/exiger-role');
 const { genererCodeBarre } = require('../clients/code-barre');
+const { normaliserTelephone, validerTelephone } = require('../clients/telephone');
 
 const MAX_TENTATIVES = 5;
 
 // Valide les champs client (partagé création/modification). Renvoie un message ou null.
+// Valide un client. `telephone` doit être DÉJÀ normalisé : c'est l'appelant qui normalise,
+// pour pouvoir stocker exactement la valeur qu'il a validée.
 function validerClient({ nom, prenom, telephone, email }) {
   if (!nom || !prenom || !telephone) return 'nom, prenom et telephone sont requis.';
   if (nom.length > 100 || prenom.length > 100 || telephone.length > 20) {
     return 'Un champ dépasse la longueur autorisée.';
   }
+  const erreurTelephone = validerTelephone(telephone);
+  if (erreurTelephone) return erreurTelephone;
   if (email && (email.length > 255 || !email.includes('@'))) return 'Email invalide.';
   return null;
 }
@@ -52,7 +57,8 @@ function creerRouteurClients(pool) {
   // Crée un client + code-barres unique. Bearer requis (rôle géré plus tard, #110).
   routeur.post('/', authentifier, exigerRole('gerante'), async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
-    const erreur = validerClient({ nom, prenom, telephone, email });
+    const telephoneNormalise = normaliserTelephone(telephone);
+    const erreur = validerClient({ nom, prenom, telephone: telephoneNormalise, email });
     if (erreur) return res.status(400).json({ message: erreur });
 
     // Réessai si collision de code_barre (contrainte UNIQUE → code Postgres 23505).
@@ -63,7 +69,7 @@ function creerRouteurClients(pool) {
           `INSERT INTO client (nom, prenom, telephone, email, code_barre)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id_client, nom, prenom, telephone, email, code_barre, date_creation`,
-          [nom, prenom, telephone, email || null, code_barre]
+          [nom, prenom, telephoneNormalise, email || null, code_barre]
         );
         return res.status(201).json(resultat.rows[0]);
       } catch (err) {
@@ -77,14 +83,15 @@ function creerRouteurClients(pool) {
   // Modifie les champs éditables d'un client (jamais le code_barre).
   routeur.put('/:id', authentifier, exigerRole('gerante'), async (req, res) => {
     const { nom, prenom, telephone, email } = req.body || {};
-    const erreur = validerClient({ nom, prenom, telephone, email });
+    const telephoneNormalise = normaliserTelephone(telephone);
+    const erreur = validerClient({ nom, prenom, telephone: telephoneNormalise, email });
     if (erreur) return res.status(400).json({ message: erreur });
     try {
       const resultat = await pool.query(
         `UPDATE client SET nom=$1, prenom=$2, telephone=$3, email=$4
          WHERE id_client=$5
          RETURNING id_client, nom, prenom, telephone, email, code_barre, date_creation`,
-        [nom, prenom, telephone, email || null, req.params.id]
+        [nom, prenom, telephoneNormalise, email || null, req.params.id]
       );
       if (resultat.rowCount === 0) {
         return res.status(404).json({ message: 'Client introuvable.' });
