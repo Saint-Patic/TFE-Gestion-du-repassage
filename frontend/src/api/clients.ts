@@ -1,5 +1,5 @@
 import { requeteApi } from './client';
-import type { Client, NouveauClient } from './types';
+import type { Client, NouveauClient, HistoriqueDunClient } from './types';
 
 // Crée un client côté backend (le code-barres est généré serveur).
 export function creerClient(donnees: NouveauClient): Promise<Client> {
@@ -25,4 +25,9 @@ export function modifierClient(id: string, donnees: NouveauClient): Promise<Clie
 // Supprime un client (ou l'anonymise s'il a des commandes) ; indique lequel via `anonymise`.
 export function supprimerClient(id: string): Promise<{ anonymise: boolean }> {
   return requeteApi<{ anonymise: boolean }>(`/clients/${id}`, { method: 'DELETE' });
+}
+
+// Historique des commandes d'une cliente, avec la chronologie de leurs changements de statut.
+export function historiqueClient(id: string): Promise<HistoriqueDunClient> {
+  return requeteApi<HistoriqueDunClient>(`/clients/${encodeURIComponent(id)}/historique`);
 }
