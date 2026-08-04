@@ -80,11 +80,16 @@ export function reprendreRepassage(id: string): Promise<Commande> {
   return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/reprendre`, { method: 'POST' });
 }
 
-// Résout l'action à effectuer pour un scan client : clôturer la commande en cours, sinon démarrer.
+// Résout l'action à effectuer pour un scan client : remettre, clôturer, ou démarrer.
 export function resoudreScan(
   codeBarre: string
-): Promise<{ action: 'demarrer' | 'cloturer'; commande: Commande }> {
+): Promise<{ action: 'demarrer' | 'cloturer' | 'recuperer'; commande: CommandeCarte }> {
   return requeteApi(`/commandes/a-scanner/${encodeURIComponent(codeBarre)}`);
+}
+
+// Enregistre la remise du linge à la cliente : « fait » → « récupéré ».
+export function marquerRecuperee(id: string): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/recuperer`, { method: 'POST' });
 }
 
 // Clôture un repassage : « fait » + emplacements + SMS, en une seule transaction côté serveur.

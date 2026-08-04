@@ -31,6 +31,10 @@ function validerCommande({ id_client, nombre_mannes, prioritaire, cintres_client
   return validerScalairesCommande({ nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus });
 }
 
+// Correspondance statut courant → action à proposer au scan. Table plutôt que ternaires
+// imbriqués : il y a désormais trois branches.
+const ACTIONS = { fait: 'recuperer', en_cours: 'cloturer', a_faire: 'demarrer' };
+
 // Fabrique : routeur commandes alimenté par le pool pg fourni.
 // diffuserMaj(idRepasseuse) : notifie le temps réel (défaut no-op → testable sans Socket.IO).
 function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
@@ -44,7 +48,10 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       let filtreRepasseuse = '';
       if (req.utilisateur.role === 'repasseuse') {
         params.push(req.utilisateur.id_utilisateur);
-        filtreRepasseuse = ` AND c.id_repasseuse = $${params.length}`;
+        // « Fait » et « Récupéré » sont collectifs depuis le #280 : la remise au comptoir n'appartient
+        // à personne en particulier, et on doit voir ce qu'on a le droit de remettre. `recupere` est
+        // inclus volontairement, sans quoi la carte disparaîtrait juste après la remise.
+        filtreRepasseuse = ` AND (c.statut IN ('fait','recupere') OR c.id_repasseuse = $${params.length})`;
       }
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
@@ -66,17 +73,22 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
   });
 
   // Résout l'action à effectuer pour un scan de code-barres client. LECTURE PURE : ne modifie rien.
-  // Priorité « en cours » d'abord : on termine ce qu'on a commencé avant d'en démarrer une autre,
-  // ce qui rend impossible le cas d'une cliente ayant à la fois une commande à faire et une en cours.
+  // DOUBLE PÉRIMÈTRE : une commande « fait » est trouvée quelle que soit la repasseuse (la remise au
+  // comptoir est collective), tandis que « en cours » et « à faire » restent limitées aux siennes.
+  // Priorité : remettre d'abord (la cliente est devant vous), puis terminer, puis démarrer.
   routeur.get('/a-scanner/:code_barre', authentifier, exigerRole('repasseuse'), async (req, res) => {
     try {
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes, c.prioritaire,
-                c.date_reception, c.id_repasseuse, c.temps_repassage_s, c.repassage_debut
+                c.date_reception, c.id_repasseuse, c.temps_repassage_s, c.repassage_debut,
+                cl.nom AS client_nom, cl.prenom AS client_prenom
          FROM commande c
          JOIN client cl ON cl.id_client = c.id_client
-         WHERE cl.code_barre = $1 AND c.id_repasseuse = $2 AND c.statut IN ('en_cours','a_faire')
-         ORDER BY (c.statut = 'en_cours') DESC, c.prioritaire DESC, c.date_reception ASC
+         WHERE cl.code_barre = $1
+           AND ( c.statut = 'fait'
+              OR (c.statut IN ('en_cours','a_faire') AND c.id_repasseuse = $2) )
+         ORDER BY (c.statut = 'fait') DESC, (c.statut = 'en_cours') DESC,
+                  c.prioritaire DESC, c.date_reception ASC
          LIMIT 1`,
         [req.params.code_barre, req.utilisateur.id_utilisateur]
       );
@@ -84,7 +96,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         return res.status(404).json({ message: 'Aucune commande active pour ce client.' });
       }
       const commande = resultat.rows[0];
-      return res.json({ action: commande.statut === 'en_cours' ? 'cloturer' : 'demarrer', commande });
+      return res.json({ action: ACTIONS[commande.statut], commande });
     } catch {
       return res.status(500).json({ message: 'Erreur serveur.' });
     }
@@ -247,6 +259,64 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       if (err.code === '23503') {
         return res.status(400).json({ message: 'Emplacement introuvable.' });
       }
+      return res.status(500).json({ message: 'Erreur serveur.' });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Remise du linge à la cliente : « fait → récupéré », la dernière transition du workflow.
+  // NON SCOPÉ à la repasseuse : la remise se fait au comptoir, par qui est disponible — une cliente
+  // ne doit pas repartir sans son linge parce que la repasseuse qui l'a encodé est absente.
+  routeur.post('/:id/recuperer', authentifier, exigerRole('repasseuse'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const cur = await client.query(
+        'SELECT statut FROM commande WHERE id_commande = $1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (cur.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Commande introuvable.' });
+      }
+
+      // Garde de transition (#228) : seule une commande « fait » peut être récupérée.
+      if (!transitionValide(cur.rows[0].statut, 'recupere')) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est pas prête à être remise." });
+      }
+
+      const maj = await client.query(
+        `UPDATE commande SET statut='recupere', date_recuperation=now()
+         WHERE id_commande=$1 AND statut='fait'
+         RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client,
+                   cintres_entr_rendus, cintres_entr_nb, date_reception, date_recuperation,
+                   id_repasseuse, repassage_debut, temps_repassage_s`,
+        [req.params.id]
+      );
+      if (maj.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est pas prête à être remise." });
+      }
+
+      // Le linge quitte l'étagère. Indispensable : l'invariant du #190 ne filtre pas sur le statut,
+      // donc une commande récupérée qui garderait ses emplacements bloquerait l'étagère à vie.
+      await client.query('DELETE FROM commande_emplacement WHERE id_commande=$1', [req.params.id]);
+
+      // L'utilisatrice tracée est celle qui REMET, qui peut différer de celle qui a repassé.
+      await client.query(
+        `INSERT INTO historique_statut (id_commande, ancien_statut, nouveau_statut, id_utilisateur)
+         VALUES ($1, 'fait', 'recupere', $2)`,
+        [req.params.id, req.utilisateur.id_utilisateur]
+      );
+
+      await client.query('COMMIT');
+      diffuserMaj(maj.rows[0].id_repasseuse);
+      return res.json(maj.rows[0]);
+    } catch {
+      await client.query('ROLLBACK');
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
       client.release();

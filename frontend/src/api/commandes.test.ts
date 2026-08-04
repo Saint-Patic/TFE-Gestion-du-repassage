@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande, definirCintresEntreprise, resoudreScan, cloturerRepassage } from './commandes';
+import { rechercherClientParCodeBarre, creerCommande, placerEmplacements, listerCommandes, modifierCommande, definirCintresEntreprise, resoudreScan, cloturerRepassage, marquerRecuperee } from './commandes';
 import { definirFournisseurJeton } from './client';
 
 beforeEach(() => {
@@ -124,5 +124,16 @@ describe('resoudreScan et cloturerRepassage (US #260)', () => {
     expect(url).toBe('/api/commandes/cmd1/cloturer');
     expect(options.method).toBe('POST');
     expect(JSON.parse(options.body)).toEqual({ emplacements: lignes });
+  });
+});
+
+describe('marquerRecuperee (US #280)', () => {
+  test('POST /api/commandes/:id/recuperer', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await marquerRecuperee('cmd1');
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/commandes/cmd1/recuperer');
+    expect(options.method).toBe('POST');
   });
 });

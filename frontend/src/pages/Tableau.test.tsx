@@ -13,6 +13,7 @@ vi.mock('../api/commandes', () => ({
   definirCintresEntreprise: vi.fn(),
   resoudreScan: vi.fn(),
   cloturerRepassage: vi.fn(),
+  marquerRecuperee: vi.fn(),
 }));
 vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
@@ -27,7 +28,7 @@ const fauxSocket = {
 vi.mock('../temps-reel/socket', () => ({ obtenirSocket: () => fauxSocket }));
 
 import { Tableau } from './Tableau';
-import { listerCommandes, demarrerRepassage, resoudreScan, cloturerRepassage } from '../api/commandes';
+import { listerCommandes, demarrerRepassage, resoudreScan, cloturerRepassage, marquerRecuperee } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { useAuth } from '../auth/AuthContext';
 
@@ -61,8 +62,17 @@ beforeEach(() => {
     commande: { id_commande: 'c1', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 2 },
   } as never);
   vi.mocked(cloturerRepassage).mockReset().mockResolvedValue(commandes[0] as never);
+  vi.mocked(marquerRecuperee).mockReset().mockResolvedValue(commandes[0] as never);
   connecte('repasseuse');
 });
+
+const commandePrete = {
+  action: 'recuperer',
+  commande: {
+    id_commande: 'c9', id_client: 'cl1', statut: 'fait', nombre_mannes: 2,
+    client_nom: 'Dupont', client_prenom: 'Marie',
+  },
+};
 
 describe('Tableau', () => {
   test('affiche les 4 colonnes', async () => {
@@ -105,6 +115,36 @@ describe('Tableau', () => {
     await userEvent.type(champ, 'ABC123{enter}');
     expect(await screen.findByText(/reste/i)).toBeInTheDocument();
     expect(demarrerRepassage).not.toHaveBeenCalled();
+  });
+
+  test('scan d’une commande prête → confirmation, sans rien écrire (US #280)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandePrete as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    expect(await screen.findByText(/Remettre la commande de Marie Dupont/i)).toBeInTheDocument();
+    expect(marquerRecuperee).not.toHaveBeenCalled();
+  });
+
+  test('confirmer la remise appelle marquerRecuperee (US #280)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandePrete as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText(/Remettre la commande de Marie Dupont/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Remettre' }));
+    expect(marquerRecuperee).toHaveBeenCalledWith('c9');
+  });
+
+  test('annuler la remise n’écrit rien (US #280)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandePrete as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText(/Remettre la commande de Marie Dupont/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(marquerRecuperee).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Remettre la commande/i)).not.toBeInTheDocument();
   });
 
   test('Annuler pendant la clôture revient au Kanban sans rien écrire (US #260)', async () => {
