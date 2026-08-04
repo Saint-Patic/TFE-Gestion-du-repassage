@@ -731,7 +731,7 @@ describe('GET /api/commandes/a-scanner/:code_barre (US #260)', () => {
 describe('POST /api/commandes/:id/cloturer (US #260)', () => {
   const enCours = {
     id_client: UUID_CLIENT, nombre_mannes: 3, statut: 'en_cours',
-    temps_repassage_s: 100, repassage_debut: null,
+    temps_repassage_s: 100, repassage_debut: null, telephone: '0475664101',
   };
   const ligneFait = {
     id_commande: UUID_CMD, id_client: UUID_CLIENT, statut: 'fait', nombre_mannes: 3,
@@ -747,7 +747,7 @@ describe('POST /api/commandes/:id/cloturer (US #260)', () => {
       query: async (sql, params) => {
         appels.push({ sql, params });
         if (/^\s*(BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return {};
-        if (/FROM commande WHERE id_commande = \$1 AND id_repasseuse/i.test(sql)) {
+        if (/FOR UPDATE OF c/i.test(sql)) {
           return options.commande
             ? { rowCount: 1, rows: [options.commande] }
             : { rowCount: 0, rows: [] };
@@ -851,5 +851,27 @@ describe('POST /api/commandes/:id/cloturer (US #260)', () => {
       .send({ emplacements: lignesValides });
     expect(res.status).toBe(409);
     expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(false);
+  });
+
+  test('cliente sans mobile (fixe) → clôture OK mais AUCUN SMS déposé (US #270)', async () => {
+    const f = poolCloture({ commande: { ...enCours, telephone: '068123456' } });
+    const res = await request(creerApp(f.pool, jest.fn()))
+      .post(`/api/commandes/${UUID_CMD}/cloturer`)
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`)
+      .send({ emplacements: lignesValides });
+    expect(res.status).toBe(200);
+    expect(f.appels.some((a) => /INSERT INTO historique_statut/i.test(a.sql))).toBe(true);
+    expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(false);
+  });
+});
+
+describe('GET /api/commandes — client_mobile (US #270)', () => {
+  test('expose client_mobile calculé en SQL, sans exposer le numéro', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/AS client_mobile/i);
+    expect(sqlVue).toMatch(/\^04\[0-9\]\{8\}\$/);
   });
 });
