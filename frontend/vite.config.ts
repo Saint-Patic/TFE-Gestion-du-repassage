@@ -36,5 +36,20 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/setupTests.ts',
+    // Mesure seulement : aucun seuil bloquant côté frontend (US #320). On veut le
+    // chiffre pour savoir où l'on en est, pas s'engager à le combler dans cette US.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/setupTests.ts',
+        // Point d'entrée : monte l'application dans le DOM, aucune règle métier.
+        // Même raisonnement que server.js côté backend.
+        'src/main.tsx',
+        'src/**/*.d.ts',
+      ],
+    },
   },
 });
