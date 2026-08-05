@@ -204,7 +204,7 @@ systemctl list-timers manne-sauvegarde
 sudo systemctl start manne-sauvegarde.service
 
 # Qu'a-t-il fait ?
-journalctl -u manne-sauvegarde -n 20 --no-pager
+sudo journalctl -u manne-sauvegarde -n 20 --no-pager
 
 # Le fichier est-il là, avec les bonnes permissions ?
 ls -l /var/backups/manne
@@ -215,6 +215,15 @@ Si le groupe affiché est `postgres` et non `debian`, le bit setgid n'a pas ét�
 `chmod 2750`.
 
 ### Rapatriement hors site
+
+⚠️ **`rsync` doit être installé des DEUX côtés** — il lance une instance distante pour comparer les
+fichiers. Si le VPS ne l'a pas, l'erreur est trompeuse (`rsync: command not found` suivi d'un
+`connection unexpectedly closed`) car elle semble venir de la machine locale :
+
+```bash
+# sur le VPS, une seule fois
+sudo apt install rsync
+```
 
 Depuis la machine d'Alexis :
 
@@ -243,31 +252,23 @@ servent plus (elles contiennent des données personnelles).
 # 1. Base temporaire
 sudo -u postgres createdb manne_bulles_restauration
 
-# 2. Restaurer le dump voulu
-sudo -u postgres pg_restore -d manne_bulles_restauration /var/backups/manne/<fichier>.dump
+# 2. Restaurer le dump le plus récent (pas de nom à recopier : on le sélectionne)
+DERNIER=$(ls -t /var/backups/manne/manne_bulles-*.dump | head -1)
+echo "Restauration de $DERNIER"
+sudo -u postgres pg_restore -d manne_bulles_restauration "$DERNIER"
 
-# 3. Comparer les effectifs (voir le fichier SQL ci-dessous)
-sudo -u postgres psql -d manne_bulles -f /tmp/effectifs.sql
-sudo -u postgres psql -d manne_bulles_restauration -f /tmp/effectifs.sql
+# 3. Comparer les effectifs (le script est versionné dans le dépôt)
+sudo -u postgres psql -d manne_bulles -f /opt/manne/deploiement/effectifs.sql
+sudo -u postgres psql -d manne_bulles_restauration -f /opt/manne/deploiement/effectifs.sql
 
 # 4. Supprimer la base de test
 sudo -u postgres dropdb manne_bulles_restauration
 ```
 
-Contenu de `/tmp/effectifs.sql` :
+Le script `deploiement/effectifs.sql` est versionné : inutile de le retaper. Si `postgres` ne peut
+pas lire `/opt/manne`, le copier d'abord : `cp /opt/manne/deploiement/effectifs.sql /tmp/`.
 
-```sql
-SELECT 'client' AS table_, count(*) FROM client
-UNION ALL SELECT 'commande', count(*) FROM commande
-UNION ALL SELECT 'commande_emplacement', count(*) FROM commande_emplacement
-UNION ALL SELECT 'emplacement', count(*) FROM emplacement
-UNION ALL SELECT 'historique_statut', count(*) FROM historique_statut
-UNION ALL SELECT 'sms_en_attente', count(*) FROM sms_en_attente
-UNION ALL SELECT 'utilisateur', count(*) FROM utilisateur
-ORDER BY 1;
-```
-
-⚠️ Utiliser `count(*)` et **non** `n_live_tup` de `pg_stat_user_tables` : cette dernière est une
+⚠️ Il utilise `count(*)` et **non** `n_live_tup` de `pg_stat_user_tables` : cette dernière est une
 estimation issue des statistiques du planificateur, qui ne sont pas encore collectées sur une base
 fraîchement restaurée. Elle afficherait des zéros et ferait conclure à tort à une restauration ratée.
 
