@@ -25,3 +25,21 @@ test('un jeton expiré est rejeté', () => {
   );
   expect(() => verifierJeton(jeton)).toThrow();
 });
+
+// Le secret est lu à chaque usage, et non au chargement du module : c'est ce qui rend
+// ce test possible. Sans cette garde, un serveur démarré sans JWT_SECRET signerait des
+// jetons avec « undefined » — vérifiables par n'importe qui. L'échec doit être immédiat
+// et bruyant, jamais silencieux.
+test('JWT_SECRET absent de l’environnement → signerJeton lève (US #320)', () => {
+  const ancien = process.env.JWT_SECRET;
+  delete process.env.JWT_SECRET;
+  try {
+    expect(() =>
+      signerJeton({ id_utilisateur: 'u-1', role: 'gerante', session_debut: 1000 })
+    ).toThrow(/JWT_SECRET manquant/);
+  } finally {
+    // Restauration impérative : jest.setup.js pose cette variable pour TOUS les fichiers.
+    // La laisser absente ferait échouer les tests suivants, avec un message sans rapport.
+    process.env.JWT_SECRET = ancien;
+  }
+});

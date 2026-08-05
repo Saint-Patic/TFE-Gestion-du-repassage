@@ -62,6 +62,23 @@ test('connexion refusée sans jeton', (done) => {
   });
 });
 
+// Distinct du cas « sans jeton » : ici un jeton EST fourni, mais il ne se vérifie pas.
+// C'est le cas d'un jeton forgé ou expiré. Le message d'erreur est volontairement le même
+// que celui de l'absence de jeton — ne pas dire à un attaquant si sa signature était le
+// problème. Sans ce test, le catch du handshake n'était jamais exercé (US #320).
+test('connexion refusée avec un jeton invalide', (done) => {
+  const client = connecter({ jeton: 'pas.un.jeton' });
+  client.on('connect', () => {
+    client.close();
+    done(new Error('la connexion ne devrait pas aboutir'));
+  });
+  client.on('connect_error', (err) => {
+    expect(err.message).toBe('Authentification requise');
+    client.close();
+    done();
+  });
+});
+
 test('connexion acceptée avec un jeton valide', (done) => {
   const client = connecter({ jeton: jetonValide() });
   client.on('connect', () => {
