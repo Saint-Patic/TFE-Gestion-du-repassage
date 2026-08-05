@@ -9,6 +9,7 @@ import { Reorganisation } from './pages/Reorganisation';
 import { RouteProtegee } from './composants/RouteProtegee';
 import { RouteRole } from './composants/RouteRole';
 import { HistoriqueClient } from './pages/HistoriqueClient';
+import { Statistiques } from './pages/Statistiques';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
       <Route path="/clients/nouveau" element={<RouteProtegee><RouteRole roles={['gerante']}><NouveauClient /></RouteRole></RouteProtegee>} />
       <Route path="/clients" element={<RouteProtegee><RouteRole roles={['gerante']}><Clients /></RouteRole></RouteProtegee>} />
       <Route path="/clients/:id/historique" element={<RouteProtegee><RouteRole roles={['gerante']}><HistoriqueClient /></RouteRole></RouteProtegee>} />
+      <Route path="/statistiques" element={<RouteProtegee><RouteRole roles={['gerante']}><Statistiques /></RouteRole></RouteProtegee>} />
     </Routes>
   );
 }

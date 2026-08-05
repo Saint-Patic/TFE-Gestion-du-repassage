@@ -33,4 +33,14 @@ describe('Accueil — liens clients selon le rôle', () => {
     rendreAvecRole('gerante');
     expect(screen.queryByText('Réorganiser les emplacements')).not.toBeInTheDocument();
   });
+
+  test('gérante → voit le lien Statistiques (US #300)', () => {
+    rendreAvecRole('gerante');
+    expect(screen.getByText('Statistiques')).toBeInTheDocument();
+  });
+
+  test('repasseuse → ne voit pas le lien Statistiques (US #300)', () => {
+    rendreAvecRole('repasseuse');
+    expect(screen.queryByText('Statistiques')).not.toBeInTheDocument();
+  });
 });
