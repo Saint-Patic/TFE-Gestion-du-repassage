@@ -121,3 +121,34 @@ describe('Cycle de session (US #55)', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// C'est précisément la route qu'on interroge quand le serveur semble mort — elle n'avait
+// pourtant jamais été exercée. Son intérêt tient entièrement au cas d'erreur : une santé
+// qui répondrait « ok » alors que la base est tombée serait pire qu'aucune santé du tout.
+describe('GET /api/health (US #320)', () => {
+  test('base joignable → 200 et status ok', async () => {
+    const appSante = creerApp({
+      query: async () => ({ rows: [{ now: '2026-08-05T10:00:00.000Z' }] }),
+    });
+
+    const res = await request(appSante).get('/api/health');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.db_time).toBe('2026-08-05T10:00:00.000Z');
+  });
+
+  test('base injoignable → 500 et status error', async () => {
+    const appSante = creerApp({
+      query: async () => {
+        throw new Error('connexion refusée');
+      },
+    });
+
+    const res = await request(appSante).get('/api/health');
+
+    expect(res.status).toBe(500);
+    expect(res.body.status).toBe('error');
+    expect(res.body.message).toBe('connexion refusée');
+  });
+});
