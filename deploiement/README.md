@@ -278,3 +278,46 @@ Les deux sorties doivent être **identiques ligne pour ligne**.
 
 Seule la base l'est, et c'est voulu : le code applicatif, l'agent d'impression et la passerelle SMS
 vivent dans Git. La base est la seule chose irremplaçable.
+
+## Base de test locale (US #330)
+
+Les tests d'intégration en base réelle (`backend/tests-base/*.base.test.js`) tournent sur une base
+dédiée, **uniquement sur le poste de développement**. À créer une seule fois :
+
+```bash
+sudo -u postgres psql -c "CREATE DATABASE manne_bulles_test OWNER manne_bulles_admin;"
+sudo -u postgres psql -d manne_bulles_test -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+```
+
+Deux raisons au `sudo -u postgres` et au `OWNER` :
+
+- `CREATE EXTENSION` exige le **superutilisateur**. L'extension `pgcrypto` est nécessaire aux
+  `DEFAULT gen_random_uuid()` des cinq clés primaires du schéma.
+- `OWNER manne_bulles_admin` évite le piège **PostgreSQL 15+** déjà rencontré sur `manne_bulles` : le
+  propriétaire de la base dispose des droits sur le schéma `public` via `pg_database_owner`, donc pas
+  de `GRANT ALL ON SCHEMA public` à ajouter.
+
+Le schéma est ensuite chargé automatiquement depuis `database/schema.sql` au démarrage de chaque
+fichier de test — rien à faire à la main, et aucune migration à rejouer (le schéma les intègre toutes).
+
+### ⚠️ Jamais sur le VPS
+
+Cette base n'existe **que** sur le poste de développement. Les tests ne doivent jamais viser la base de
+production : un test de clôture insère dans `sms_en_attente`, et la passerelle Termux interroge cette
+file toutes les 30 s sans pouvoir distinguer une ligne de test — elle enverrait un **vrai SMS à une
+vraie cliente**. S'y ajoutent les `DELETE`/`UPDATE` sur des commandes réelles.
+
+Un garde-fou l'applique dans le code (`backend/tests-base/config-base.js`) : la suite refuse de démarrer
+si le nom de la base ne finit pas par `_test`.
+
+### Commandes
+
+```bash
+cd backend
+npm test            # tout, en série (--runInBand) : rapides + base
+npm run test:rapide # seulement les rapides, en parallèle, sans PostgreSQL
+npm run test:coverage
+```
+
+`--runInBand` est indispensable : plusieurs fichiers de test qui vident et remplissent les mêmes tables
+en parallèle produiraient des échecs intermittents. Coût mesuré sur l'ensemble de la suite : **+1,2 s**.

@@ -96,7 +96,8 @@ function creerRouteurEmplacements(pool) {
         return res.status(400).json({ message: 'Emplacement destination introuvable.' });
       }
 
-      // Invariant : une étagère (hors sol) ne peut contenir qu'un seul client.
+      // Invariant #190 : un emplacement (hors sol) ne peut contenir qu'un seul client.
+      // La portée est la CASE, pas l'étagère (formulation rectifiée au #330).
       if (!dest.rows[0].est_au_sol) {
         const autre = await client.query(
           `SELECT 1 FROM commande_emplacement ce
