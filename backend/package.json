@@ -5,8 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test": "jest --runInBand",
+    "test:rapide": "jest --testPathIgnorePatterns=base.test.js",
+    "test:coverage": "jest --coverage --runInBand"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
