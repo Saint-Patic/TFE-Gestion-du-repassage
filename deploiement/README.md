@@ -166,3 +166,115 @@ les envois **sans consommer de SMS** —, passer `MODE_ENVOI=sms` dans le `.env`
 Toujours faire la première mise en route en `console` : c'est ce qui valide le jeton et la connexion au
 VPS **avant** de consommer un vrai SMS. Un refus d'authentification apparaît alors comme
 `Appel /en-attente refusé (HTTP 401)` dans le journal.
+
+## Sauvegardes automatisées de la base (US #310)
+
+Un dump quotidien de `manne_bulles`, sept jours conservés sur le VPS, et une copie rapatriée hors
+site. Le script tourne sous l'utilisateur **`postgres`** : l'authentification `peer` s'applique, donc
+**aucun mot de passe n'est stocké nulle part**.
+
+### Installation sur le VPS
+
+```bash
+# 1. Le script
+sudo cp /opt/manne/deploiement/sauvegarder-base.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/sauvegarder-base.sh
+
+# 2. Le dossier de destination
+#    setgid (le 2 en tête) : les fichiers créés héritent du groupe `debian`, ce qui permet le
+#    rapatriement par SSH. postgres écrit, debian lit, personne d'autre n'accède.
+sudo mkdir -p /var/backups/manne
+sudo chown postgres:debian /var/backups/manne
+sudo chmod 2750 /var/backups/manne
+
+# 3. Le service et son timer
+sudo cp /opt/manne/deploiement/manne-sauvegarde.service /etc/systemd/system/
+sudo cp /opt/manne/deploiement/manne-sauvegarde.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now manne-sauvegarde.timer
+```
+
+### Vérifier
+
+```bash
+# Le timer est-il armé, et pour quand ?
+systemctl list-timers manne-sauvegarde
+
+# Déclencher une sauvegarde immédiatement, sans attendre 2h30
+sudo systemctl start manne-sauvegarde.service
+
+# Qu'a-t-il fait ?
+sudo journalctl -u manne-sauvegarde -n 20 --no-pager
+
+# Le fichier est-il là, avec les bonnes permissions ?
+ls -l /var/backups/manne
+```
+
+Attendu : un fichier `manne_bulles-AAAAMMJJ-HHMM.dump` en `-rw-r----- postgres debian`.
+Si le groupe affiché est `postgres` et non `debian`, le bit setgid n'a pas été posé — reprendre le
+`chmod 2750`.
+
+### Rapatriement hors site
+
+⚠️ **`rsync` doit être installé des DEUX côtés** — il lance une instance distante pour comparer les
+fichiers. Si le VPS ne l'a pas, l'erreur est trompeuse (`rsync: command not found` suivi d'un
+`connection unexpectedly closed`) car elle semble venir de la machine locale :
+
+```bash
+# sur le VPS, une seule fois
+sudo apt install rsync
+```
+
+Depuis la machine d'Alexis :
+
+```bash
+mkdir -p ~/sauvegardes-manne
+rsync -az debian@vps-a87c8d0b.vps.ovh.net:/var/backups/manne/ ~/sauvegardes-manne/
+```
+
+⚠️ **Volontairement sans `--delete`.** Le VPS purge au bout de sept jours ; si `rsync` répercutait ces
+suppressions, les copies locales disparaîtraient au même rythme et la copie hors site n'apporterait
+aucune profondeur d'historique. En l'omettant, les copies s'accumulent localement — c'est là que vit
+la conservation longue.
+
+À planifier par une tâche `cron` utilisateur, par exemple tous les jours à 9h :
+
+```
+0 9 * * * rsync -az debian@vps-a87c8d0b.vps.ovh.net:/var/backups/manne/ ~/sauvegardes-manne/
+```
+
+Les copies locales n'ont **pas** de purge automatique : il revient à Alexis de supprimer celles qui ne
+servent plus (elles contiennent des données personnelles).
+
+### Restaurer — procédure à connaître AVANT d'en avoir besoin
+
+```bash
+# 1. Base temporaire
+sudo -u postgres createdb manne_bulles_restauration
+
+# 2. Restaurer le dump le plus récent (pas de nom à recopier : on le sélectionne)
+DERNIER=$(ls -t /var/backups/manne/manne_bulles-*.dump | head -1)
+echo "Restauration de $DERNIER"
+sudo -u postgres pg_restore -d manne_bulles_restauration "$DERNIER"
+
+# 3. Comparer les effectifs (le script est versionné dans le dépôt)
+sudo -u postgres psql -d manne_bulles -f /opt/manne/deploiement/effectifs.sql
+sudo -u postgres psql -d manne_bulles_restauration -f /opt/manne/deploiement/effectifs.sql
+
+# 4. Supprimer la base de test
+sudo -u postgres dropdb manne_bulles_restauration
+```
+
+Le script `deploiement/effectifs.sql` est versionné : inutile de le retaper. Si `postgres` ne peut
+pas lire `/opt/manne`, le copier d'abord : `cp /opt/manne/deploiement/effectifs.sql /tmp/`.
+
+⚠️ Il utilise `count(*)` et **non** `n_live_tup` de `pg_stat_user_tables` : cette dernière est une
+estimation issue des statistiques du planificateur, qui ne sont pas encore collectées sur une base
+fraîchement restaurée. Elle afficherait des zéros et ferait conclure à tort à une restauration ratée.
+
+Les deux sorties doivent être **identiques ligne pour ligne**.
+
+### Ce qui n'est pas sauvegardé
+
+Seule la base l'est, et c'est voulu : le code applicatif, l'agent d'impression et la passerelle SMS
+vivent dans Git. La base est la seule chose irremplaçable.
