@@ -19,12 +19,17 @@ module.exports = {
     '!server.js',
     '!scripts/**',
   ],
+  // Seuils calés sur le réellement atteint au #320 (93,79 / 88,15 / 98,87 / 93,83),
+  // arrondi à l'entier inférieur moins 2 points de marge. Les anciens seuils (80/75/80/80)
+  // dataient du #65 : si loin du réel qu'ils n'auraient jamais rien signalé. Un seuil
+  // n'a de valeur que s'il est proche de l'atteint ; la marge de 2 points évite qu'un
+  // refactor légitime fasse échouer la suite pour un dixième de point.
   coverageThreshold: {
     global: {
-      statements: 80,
-      branches: 75,
-      functions: 80,
-      lines: 80,
+      statements: 91,
+      branches: 86,
+      functions: 96,
+      lines: 91,
     },
   },
 };
