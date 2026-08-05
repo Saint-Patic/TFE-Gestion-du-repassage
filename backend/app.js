@@ -5,6 +5,7 @@ const creerRouteurClients = require('./routes/clients');
 const creerRouteurCommandes = require('./routes/commandes');
 const creerRouteurEmplacements = require('./routes/emplacements');
 const creerRouteurSms = require('./routes/sms');
+const creerRouteurStatistiques = require('./routes/statistiques');
 
 // Fabrique : construit l'application Express à partir d'un pool pg (réel ou injecté
 // en test). Ne démarre pas le serveur (pas de listen) — testable via Supertest.
@@ -28,6 +29,7 @@ function creerApp(pool, diffuserMaj = () => {}) {
   app.use('/api/commandes', creerRouteurCommandes(pool, diffuserMaj));
   app.use('/api/emplacements', creerRouteurEmplacements(pool));
   app.use('/api/sms', creerRouteurSms(pool));
+  app.use('/api/statistiques', creerRouteurStatistiques(pool));
 
   return app;
 }
