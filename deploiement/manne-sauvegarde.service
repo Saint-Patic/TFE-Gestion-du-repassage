@@ -1,0 +1,9 @@
+[Unit]
+Description=Sauvegarde quotidienne de la base manne_bulles
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/local/bin/sauvegarder-base.sh
