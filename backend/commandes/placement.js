@@ -35,7 +35,11 @@ async function enregistrerPlacement(client, idCommande, idClient, nombreMannes, 
     throw erreurPlacement(400, `${total} manne(s) placée(s) pour ${nombreMannes} attendue(s).`);
   }
 
-  // Invariant #190 : une étagère (hors sol) ne peut appartenir qu'à un seul client.
+  // Invariant #190 : un emplacement (hors sol) ne peut contenir qu'un seul client.
+  // La portée est bien la CASE et non l'étagère : un client peut répartir ses mannes sur
+  // plusieurs emplacements, et deux clients peuvent occuper deux cases d'une même étagère.
+  // (Formulation rectifiée au #330, où un test en base réelle a montré que la phrase
+  // « une étagère = un seul client » ne correspondait à aucune ligne de code.)
   const ciblesDistinctes = [...new Set(emplacements.map((e) => e.id_emplacement))];
   for (const idEmp of ciblesDistinctes) {
     const conflit = await client.query(

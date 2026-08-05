@@ -11,6 +11,9 @@ module.exports = {
     '!jest.config.js',
     '!jest.setup.js',
     '!coverage/**',
+    // tests-base/ : outillage des tests en base réelle (module d'aide, configuration).
+    // Ce n'est pas du code applicatif, il n'a pas à entrer dans la mesure.
+    '!tests-base/**',
     // Exclusions assumées, et non oubliées :
     // - server.js : point d'entrée. Il charge dotenv, crée un pool et appelle listen.
     //   Le tester reviendrait à vérifier que dotenv lit un fichier et que pg ouvre une connexion.
