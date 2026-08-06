@@ -23,7 +23,7 @@ export function Encodage() {
   const [commande, setCommande] = useState<{ id_commande: string; nombre_mannes: number } | null>(null);
   const champScan = useRef<HTMLInputElement>(null);
 
-  // Préchargement des 42 emplacements (une fois) pour valider les scans côté client.
+  // Préchargement des emplacements (une fois) pour valider les scans côté client.
   useEffect(() => {
     listerEmplacements().then(setEmplacements).catch(() => {});
   }, []);

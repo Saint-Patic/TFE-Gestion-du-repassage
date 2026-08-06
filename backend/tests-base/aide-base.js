@@ -76,7 +76,7 @@ async function semerClient(
   return r.rows[0].id_client;
 }
 
-// Les 42 emplacements physiques + la ligne « SOL » (#190).
+// Tous les emplacements physiques (le générateur fait foi) + la ligne « SOL » (#190).
 async function semerEmplacements(pool) {
   for (const e of genererEmplacements()) {
     await pool.query(

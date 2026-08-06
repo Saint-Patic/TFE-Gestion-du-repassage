@@ -32,7 +32,7 @@ export function Tableau() {
   const [aCloturer, setACloturer] = useState<Commande | null>(null);
   const [aRemettre, setARemettre] = useState<CommandeCarte | null>(null);
 
-  // Préchargement des 42 emplacements pour la modale de re-placement.
+  // Préchargement des emplacements pour la modale de re-placement.
   useEffect(() => {
     listerEmplacements().then(setEmplacements).catch(() => {});
   }, []);
