@@ -96,6 +96,74 @@ describe('Encodage — réception (US #150)', () => {
     });
   });
 
+  // Sur tablette, le scanner appairé en Bluetooth fait passer le système pour équipé d'un
+  // clavier matériel : le clavier logiciel ne s'affiche plus. Les mannes doivent donc être
+  // comptables sans frappe — soit en rescannant, soit au pavé tactile (#340).
+  test('rescanner la même cliente incrémente le nombre de mannes', async () => {
+    vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
+    render(<Encodage />);
+    const champ = screen.getByPlaceholderText('Code-barres');
+    await userEvent.type(champ, 'K7QF2M9X{enter}');
+    const champMannes = await screen.findByLabelText('Nombre de mannes');
+    expect(champMannes).toHaveValue(1);
+
+    await userEvent.type(champ, 'K7QF2M9X{enter}');
+    expect(champMannes).toHaveValue(2);
+    await userEvent.type(champ, 'K7QF2M9X{enter}');
+    expect(champMannes).toHaveValue(3);
+
+    // Le rescan est résolu localement : inutile de réinterroger le serveur.
+    expect(rechercherClientParCodeBarre).toHaveBeenCalledTimes(1);
+  });
+
+  test('scanner une AUTRE cliente change de cliente et repart à une manne', async () => {
+    const autre = { ...client, id_client: 'xyz', nom: 'Martin', prenom: 'Jean', code_barre: 'ZZZZ1111' };
+    vi.mocked(rechercherClientParCodeBarre).mockImplementation(async (code: string) =>
+      code === 'ZZZZ1111' ? autre : client
+    );
+    render(<Encodage />);
+    const champ = screen.getByPlaceholderText('Code-barres');
+    await userEvent.type(champ, 'K7QF2M9X{enter}');
+    await screen.findByLabelText('Nombre de mannes');
+    await userEvent.type(champ, 'K7QF2M9X{enter}');
+    expect(screen.getByLabelText('Nombre de mannes')).toHaveValue(2);
+
+    await userEvent.type(champ, 'ZZZZ1111{enter}');
+    expect(await screen.findByText('Jean Martin')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nombre de mannes')).toHaveValue(1);
+  });
+
+  test('le pavé tactile compte les mannes sans aucune frappe', async () => {
+    vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
+    vi.mocked(creerCommande).mockResolvedValue({
+      id_commande: 'cmd1', id_client: 'abc', statut: 'a_faire',
+      nombre_mannes: 3, prioritaire: false,
+      cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
+    });
+    render(<Encodage />);
+    await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
+    await screen.findByLabelText('Nombre de mannes');
+    const plus = screen.getByLabelText('Augmenter nombre de mannes');
+    await userEvent.click(plus);
+    await userEvent.click(plus);
+    await userEvent.click(screen.getByRole('button', { name: /Valider la réception/ }));
+    expect(creerCommande).toHaveBeenCalledWith({
+      id_client: 'abc', nombre_mannes: 3,
+      prioritaire: false, cintres_client: false, cintres_entr_rendus: false,
+    });
+  });
+
+  // Les deux méthodes doivent cohabiter : après un appui sur le pavé, le scan suivant ne
+  // doit pas être perdu parce que le focus est resté sur le bouton.
+  test('après un appui sur +, le focus revient au champ de scan', async () => {
+    vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
+    render(<Encodage />);
+    await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
+    await screen.findByLabelText('Nombre de mannes');
+    await userEvent.click(screen.getByLabelText('Augmenter nombre de mannes'));
+    expect(screen.getByPlaceholderText('Code-barres')).toHaveFocus();
+  });
+
   test('code inconnu (404) → message d’erreur', async () => {
     vi.mocked(rechercherClientParCodeBarre).mockRejectedValue(
       new ErreurApi(404, { message: 'Client inconnu.' })

@@ -5,6 +5,7 @@ import { listerEmplacements } from '../api/emplacements';
 import { ErreurApi } from '../api/client';
 import type { Client, Emplacement } from '../api/types';
 import { PlacementMannes } from '../composants/PlacementMannes';
+import { ChampNombre } from '../composants/ChampNombre';
 
 type Phase = 'reception' | 'placement';
 
@@ -12,7 +13,7 @@ export function Encodage() {
   const [phase, setPhase] = useState<Phase>('reception');
   const [code, setCode] = useState('');
   const [client, setClient] = useState<Client | null>(null);
-  const [mannes, setMannes] = useState('1');
+  const [mannes, setMannes] = useState(1);
   const [prioritaire, setPrioritaire] = useState(false);
   const [cintresClient, setCintresClient] = useState(false);
   const [cintresEntrRendus, setCintresEntrRendus] = useState(false);
@@ -33,13 +34,35 @@ export function Encodage() {
     if (phase === 'reception' && !client) champScan.current?.focus();
   }, [phase, client]);
 
+  // Le pavé tactile et le scanner doivent cohabiter : un appui sur un bouton y déplace le
+  // focus, et le scan suivant — qui n'est qu'une frappe clavier — irait dans le vide.
+  function compterMannes(n: number) {
+    setMannes(n);
+    champScan.current?.focus();
+  }
+
   async function rechercher(e: FormEvent) {
     e.preventDefault();
     setErreur(null);
     setSucces(null);
+    const scanne = code.trim().toUpperCase();
+    // Vidé systématiquement : sans cela, un second scan s'ajouterait au premier et
+    // produirait un code invalide.
+    setCode('');
+    if (!scanne) return;
+
+    // Rescanner la même cliente = une manne de plus, résolu sans appel serveur. Même geste
+    // qu'au placement (#160), et surtout : aucune frappe requise, donc utilisable sur une
+    // tablette où le scanner appairé masque le clavier logiciel (#340).
+    if (client && scanne === client.code_barre.toUpperCase()) {
+      setMannes((n) => n + 1);
+      return;
+    }
+
     try {
-      const trouve = await rechercherClientParCodeBarre(code.trim());
+      const trouve = await rechercherClientParCodeBarre(scanne);
       setClient(trouve);
+      setMannes(1); // le premier scan compte pour une manne
     } catch (err) {
       if (err instanceof ErreurApi && err.statut === 404) {
         setErreur('Client inconnu — créez-le d’abord.');
@@ -52,7 +75,7 @@ export function Encodage() {
   async function validerReception(e: FormEvent) {
     e.preventDefault();
     if (!client) return;
-    const nb = Number(mannes);
+    const nb = mannes;
     if (!Number.isInteger(nb) || nb < 1) {
       setErreur('Le nombre de mannes doit être un entier ≥ 1.');
       return;
@@ -87,7 +110,7 @@ export function Encodage() {
       setCommande(null);
       setClient(null);
       setCode('');
-      setMannes('1');
+      setMannes(1);
       setPrioritaire(false);
       setCintresClient(false);
       setCintresEntrRendus(false);
@@ -122,14 +145,16 @@ export function Encodage() {
             <form onSubmit={validerReception} className="flex flex-col gap-2 rounded border p-3">
               <p>Client : <strong>{client.prenom} {client.nom}</strong></p>
               <label htmlFor="mannes" className="font-semibold">Nombre de mannes</label>
-              <input
+              <ChampNombre
                 id="mannes"
-                className="rounded border p-2"
-                type="number"
+                libelle="nombre de mannes"
+                valeur={mannes}
                 min={1}
-                value={mannes}
-                onChange={(e) => setMannes(e.target.value)}
+                onChange={compterMannes}
               />
+              <p className="text-xs text-gray-500">
+                Rescanner la cliente ajoute une manne — ou utilisez les boutons.
+              </p>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={prioritaire} onChange={(e) => setPrioritaire(e.target.checked)} />
                 Prioritaire
