@@ -33,17 +33,22 @@ CREATE TABLE client (
 
 -- ============================================================
 -- Table : Emplacement
--- Étagères A, B, C, D (3 positions/niveau) et E (2 positions/niveau)
+-- Étagères A, B, C, D (4 niveaux × 3 positions) et E, la petite (3 niveaux × 2 positions)
 -- ============================================================
 -- Le sol (est_au_sol = TRUE) est un débordement partagé sans étagère/niveau/position :
 -- ces trois colonnes sont donc nullables et les CHECK tolèrent le sol.
+-- Contraintes nommées explicitement : c'est ce que produit la migration du #190
+-- (scripts/ajouter-au-sol.js), donc une base neuve et une base migrée portent les
+-- mêmes noms. Sans ces noms, PostgreSQL générerait emplacement_check, _check1, _check2
+-- — numérotation dépendante de l'ordre de création, sur laquelle aucune migration
+-- ne doit reposer.
 CREATE TABLE emplacement (
     id_emplacement   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code_barre       VARCHAR(50) NOT NULL UNIQUE,
     est_au_sol       BOOLEAN NOT NULL DEFAULT FALSE,
-    etagere          CHAR(1)     CHECK (est_au_sol OR etagere IN ('A','B','C','D','E')),
-    niveau           SMALLINT    CHECK (est_au_sol OR niveau BETWEEN 1 AND 3),
-    position         VARCHAR(10) CHECK (est_au_sol OR position IN ('gauche','centre','droite')),
+    etagere          CHAR(1)     CONSTRAINT emplacement_etagere_check  CHECK (est_au_sol OR etagere IN ('A','B','C','D','E')),
+    niveau           SMALLINT    CONSTRAINT emplacement_niveau_check   CHECK (est_au_sol OR niveau BETWEEN 1 AND 4),
+    position         VARCHAR(10) CONSTRAINT emplacement_position_check CHECK (est_au_sol OR position IN ('gauche','centre','droite')),
     UNIQUE (etagere, niveau, position)
 );
 

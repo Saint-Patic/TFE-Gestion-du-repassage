@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { modifierCommande, placerEmplacements } from '../api/commandes';
 import type { CommandeCarte, Emplacement } from '../api/types';
 import { PlacementMannes } from './PlacementMannes';
+import { ChampNombre } from './ChampNombre';
 
 type Props = {
   commande: CommandeCarte;
@@ -14,7 +15,7 @@ type Props = {
 // Modale d'édition d'une commande « à faire » (flags + nombre de mannes).
 // Si le nombre de mannes change, enchaîne la phase de placement (#160) avant de fermer.
 export function ModaleModifierCommande({ commande, emplacements, onFerme, onEnregistre }: Props) {
-  const [mannes, setMannes] = useState(String(commande.nombre_mannes));
+  const [mannes, setMannes] = useState(commande.nombre_mannes);
   const [prioritaire, setPrioritaire] = useState(commande.prioritaire);
   const [cintresClient, setCintresClient] = useState(commande.cintres_client);
   const [cintresEntrRendus, setCintresEntrRendus] = useState(commande.cintres_entr_rendus);
@@ -24,7 +25,7 @@ export function ModaleModifierCommande({ commande, emplacements, onFerme, onEnre
 
   async function enregistrer(e: FormEvent) {
     e.preventDefault();
-    const nb = Number(mannes);
+    const nb = mannes;
     if (!Number.isInteger(nb) || nb < 1) {
       setErreur('Le nombre de mannes doit être un entier ≥ 1.');
       return;
@@ -70,8 +71,8 @@ export function ModaleModifierCommande({ commande, emplacements, onFerme, onEnre
         {phase === 'edition' && (
           <form onSubmit={enregistrer} className="flex flex-col gap-3">
             <label htmlFor="mannes-modif" className="font-semibold">Nombre de mannes</label>
-            <input id="mannes-modif" className="rounded border p-2" type="number" min={1}
-              value={mannes} onChange={(e) => setMannes(e.target.value)} />
+            <ChampNombre id="mannes-modif" libelle="nombre de mannes" valeur={mannes}
+              min={1} onChange={setMannes} />
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={prioritaire} onChange={(e) => setPrioritaire(e.target.checked)} />
               Prioritaire

@@ -1,7 +1,7 @@
 import { requeteApi } from './client';
 import type { Emplacement, ContenuEmplacement } from './types';
 
-// Liste les emplacements (42 étagères + sol) avec le client occupant. Préchargement des écrans.
+// Liste les emplacements (étagères + sol) avec le client occupant. Préchargement des écrans.
 export function listerEmplacements(): Promise<Emplacement[]> {
   return requeteApi<Emplacement[]>('/emplacements');
 }

@@ -10,8 +10,13 @@ vi.mock('../api/clients', () => ({
   supprimerClient: vi.fn(),
 }));
 
+vi.mock('../api/agent', () => ({
+  imprimerEtiquette: vi.fn(),
+}));
+
 import { Clients } from './Clients';
 import { listerClients, modifierClient, supprimerClient } from '../api/clients';
+import { imprimerEtiquette } from '../api/agent';
 
 const liste = [
   { id_client: '1', nom: 'Dupont', prenom: 'Marie', telephone: '0470', email: null, code_barre: 'AB', date_creation: 'x' },
@@ -33,6 +38,8 @@ beforeEach(() => {
   vi.mocked(listerClients).mockReset();
   vi.mocked(modifierClient).mockReset();
   vi.mocked(supprimerClient).mockReset();
+  vi.mocked(imprimerEtiquette).mockReset();
+  vi.mocked(imprimerEtiquette).mockResolvedValue(undefined);
 });
 
 describe('Clients', () => {
@@ -63,6 +70,43 @@ describe('Clients', () => {
     await userEvent.click((await screen.findAllByLabelText('Supprimer le client'))[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     expect(supprimerClient).toHaveBeenCalledWith('1');
+  });
+
+  // Le code-barres n'était affiché qu'une fois, sur l'écran de création. Une étiquette
+  // perdue le rendait donc introuvable, alors qu'il permet la saisie au clavier quand
+  // l'imprimante est en panne (le scanner est un clavier, cf. #150).
+  test('la liste affiche le code-barres de chaque client', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    rendre();
+    expect(await screen.findByText('AB')).toBeInTheDocument();
+    expect(screen.getByText('CD')).toBeInTheDocument();
+  });
+
+  test('la recherche trouve un client par son code-barres', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    rendre();
+    await screen.findByText(/Martin Jean/);
+    await userEvent.type(screen.getByPlaceholderText('Rechercher…'), 'cd');
+    expect(screen.getByText(/Martin Jean/)).toBeInTheDocument();
+    expect(screen.queryByText(/Dupont Marie/)).not.toBeInTheDocument();
+  });
+
+  // Une étiquette collée s'abîme ou se perd, et le code-barres appartient au CLIENT :
+  // sans réimpression, la cliente devenait définitivement non scannable (#340).
+  test('clic 🖨 réimprime l’étiquette du client de la ligne', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    rendre();
+    await userEvent.click((await screen.findAllByLabelText('Réimprimer l’étiquette'))[0]);
+    expect(imprimerEtiquette).toHaveBeenCalledWith(liste[0]);
+    expect(await screen.findByText(/étiquette envoyée/i)).toBeInTheDocument();
+  });
+
+  test('si l’agent d’impression ne répond pas, le message le dit', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    vi.mocked(imprimerEtiquette).mockRejectedValue(new Error('injoignable'));
+    rendre();
+    await userEvent.click((await screen.findAllByLabelText('Réimprimer l’étiquette'))[0]);
+    expect(await screen.findByText(/agent d’impression/i)).toBeInTheDocument();
   });
 
   test('chaque ligne porte un lien vers l’historique du client (US #290)', async () => {

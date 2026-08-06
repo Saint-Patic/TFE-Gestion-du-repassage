@@ -80,7 +80,9 @@ describe('CarteCommande', () => {
     render(<CarteCommande
       commande={{ ...base, statut: 'en_cours', repassage_debut: null, temps_repassage_s: 0 }}
       onCintresEntreprise={onCintres} />);
-    const champ = screen.getByLabelText(/Cintres entreprise/i);
+    // Correspondance exacte : les boutons du pavé portent aussi « cintres entreprise »
+    // dans leur libellé d'accessibilité (« Augmenter cintres entreprise »).
+    const champ = screen.getByLabelText('Cintres entreprise');
     await userEvent.type(champ, '4');
     await userEvent.tab(); // blur
     expect(onCintres).toHaveBeenCalledWith(expect.objectContaining({ id_commande: base.id_commande }), 4);

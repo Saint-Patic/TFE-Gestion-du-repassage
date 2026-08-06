@@ -1,5 +1,6 @@
 import type { CommandeCarte } from '../api/types';
 import { Chrono } from './Chrono';
+import { ChampNombre } from './ChampNombre';
 
 type Props = {
   commande: CommandeCarte;
@@ -39,20 +40,18 @@ export function CarteCommande({ commande, onModifier, onPause, onReprendre, onCi
         </span>
       )}
       {commande.statut === 'en_cours' && onCintresEntreprise && (
-        <label className="flex items-center gap-2 text-sm">
-          Cintres entreprise
-          <input
-            type="number"
+        <span className="flex items-center gap-2 text-sm">
+          <label htmlFor={`cintres-${commande.id_commande}`}>Cintres entreprise</label>
+          {/* Enregistré à chaque changement : avec des boutons il n'y a plus d'événement
+              « blur » sur lequel s'appuyer, et l'UPDATE du #230 est idempotent. */}
+          <ChampNombre
+            id={`cintres-${commande.id_commande}`}
+            libelle="cintres entreprise"
+            valeur={commande.cintres_entr_nb ?? 0}
             min={0}
-            defaultValue={commande.cintres_entr_nb ?? ''}
-            className="w-16 rounded border p-1"
-            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            onBlur={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isInteger(n) && n >= 0) onCintresEntreprise(commande, n);
-            }}
+            onChange={(n) => onCintresEntreprise(commande, n)}
           />
-        </label>
+        </span>
       )}
       <span className="flex flex-wrap gap-1">
         {commande.prioritaire && (

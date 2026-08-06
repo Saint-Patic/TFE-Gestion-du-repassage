@@ -13,7 +13,13 @@ async function envoyer(pdf, nomFichier) {
   if (mode === 'imprimante') {
     // require paresseux : le module Windows n'est chargé que dans cette branche.
     const { print } = require('pdf-to-printer');
-    const options = process.env.NOM_IMPRIMANTE ? { printer: process.env.NOM_IMPRIMANTE } : {};
+    // Orientation imposée par le travail d'impression : le pilote ITPP130 de la
+    // MUNBYN ne permet pas de la choisir, et sans elle l'étiquette sort en travers.
+    // Le réglage voyage donc avec le code plutôt qu'avec la configuration du poste.
+    const options = { orientation: 'landscape' };
+    if (process.env.NOM_IMPRIMANTE) {
+      options.printer = process.env.NOM_IMPRIMANTE;
+    }
     await print(chemin, options);
     return { mode: 'imprimante' };
   }
