@@ -72,6 +72,25 @@ describe('Clients', () => {
     expect(supprimerClient).toHaveBeenCalledWith('1');
   });
 
+  // Le code-barres n'était affiché qu'une fois, sur l'écran de création. Une étiquette
+  // perdue le rendait donc introuvable, alors qu'il permet la saisie au clavier quand
+  // l'imprimante est en panne (le scanner est un clavier, cf. #150).
+  test('la liste affiche le code-barres de chaque client', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    rendre();
+    expect(await screen.findByText('AB')).toBeInTheDocument();
+    expect(screen.getByText('CD')).toBeInTheDocument();
+  });
+
+  test('la recherche trouve un client par son code-barres', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    rendre();
+    await screen.findByText(/Martin Jean/);
+    await userEvent.type(screen.getByPlaceholderText('Rechercher…'), 'cd');
+    expect(screen.getByText(/Martin Jean/)).toBeInTheDocument();
+    expect(screen.queryByText(/Dupont Marie/)).not.toBeInTheDocument();
+  });
+
   // Une étiquette collée s'abîme ou se perd, et le code-barres appartient au CLIENT :
   // sans réimpression, la cliente devenait définitivement non scannable (#340).
   test('clic 🖨 réimprime l’étiquette du client de la ligne', async () => {

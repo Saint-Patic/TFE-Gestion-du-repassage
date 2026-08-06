@@ -16,8 +16,10 @@ export function Clients() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
+  // Le code-barres fait partie de la cible de recherche : c'est parfois la seule chose
+  // que la gérante ait sous les yeux, lue sur une étiquette abîmée.
   const filtres = clients.filter((c) => {
-    const cible = `${c.nom} ${c.prenom} ${c.telephone}`.toLowerCase();
+    const cible = `${c.nom} ${c.prenom} ${c.telephone} ${c.code_barre}`.toLowerCase();
     return cible.includes(recherche.toLowerCase());
   });
 
@@ -64,7 +66,12 @@ export function Clients() {
       <ul className="flex flex-col divide-y">
         {filtres.map((c) => (
           <li key={c.id_client} className="flex items-center justify-between py-2">
-            <span>{c.nom} {c.prenom} — {c.telephone}</span>
+            <span className="flex flex-col">
+              <span>{c.nom} {c.prenom} — {c.telephone}</span>
+              {/* Lisible et sélectionnable : permet la saisie au clavier si l'étiquette
+                  est perdue et l'imprimante indisponible. */}
+              <span className="font-mono text-xs text-gray-500">{c.code_barre}</span>
+            </span>
             <span className="flex gap-2">
               <Link aria-label="Historique du client" className="rounded px-2 py-1" to={`/clients/${c.id_client}/historique`}>🕘</Link>
               <button aria-label="Réimprimer l’étiquette" className="rounded px-2 py-1" onClick={() => reimprimer(c)}>🖨</button>
