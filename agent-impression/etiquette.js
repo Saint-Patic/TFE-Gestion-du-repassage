@@ -3,9 +3,19 @@ const PDFDocument = require('pdfkit');
 
 const MM_VERS_PT = 2.834645669;
 
-// Tailles de la mise en page, en points. Relevées à la hausse au #340 après impression
-// réelle : le nom et le code-barres d'origine se lisaient mal à bout de bras.
-const TAILLE_NOM_PT = 11;
+// Deux gabarits, parce que les deux étiquettes ne servent pas la même chose.
+//
+// - `client` : lue à bout de bras au comptoir, sur une carte qui reste des mois entre
+//   les mains de la cliente. Nom et code-barres agrandis au #340, et le code répété en
+//   clair sous le code-barres pour rester exploitable si les barres s'abîment.
+// - `emplacement` : collée sur une étagère, scannée de près. Mise en page d'origine,
+//   volontairement plus sobre : le code sert déjà de titre, le répéter en clair serait
+//   un doublon, et il n'y a rien à lire à distance.
+const GABARITS = {
+  client: { tailleNomPt: 11, codeEnClair: true, etirerCodeBarre: true },
+  emplacement: { tailleNomPt: 8, codeEnClair: false, etirerCodeBarre: false },
+};
+
 const TAILLE_CODE_PT = 8;
 // Le nom est borné à deux lignes : sans cette limite, un nom long repousserait le
 // code-barres jusqu'à ne plus lui laisser de place.
@@ -17,11 +27,13 @@ function tailleEtiquette() {
   return [l * MM_VERS_PT, h * MM_VERS_PT];
 }
 
-// Génère un PDF d'étiquette (Buffer) : nom prénom + code-barres Code 128, et le code
-// en clair dessous. Ce dernier se supprime par `afficherCodeEnClair: false` — utile
-// pour un emplacement, dont le titre est déjà le code : la place libérée revient au
-// code-barres, qui devient plus haut et donc plus facile à scanner.
-async function generateEtiquette({ nom, prenom, code_barre, afficherCodeEnClair = true }) {
+// Génère un PDF d'étiquette (Buffer) : nom prénom + code-barres Code 128, selon le
+// gabarit demandé (voir GABARITS ci-dessus).
+async function generateEtiquette({ nom, prenom, code_barre, gabarit = 'client' }) {
+  const modele = GABARITS[gabarit];
+  if (!modele) {
+    throw new Error(`Gabarit d'étiquette inconnu : « ${gabarit} ». Attendu : ${Object.keys(GABARITS).join(' ou ')}.`);
+  }
   const imageCodeBarre = await bwipjs.toBuffer({
     bcid: 'code128',
     text: code_barre,
@@ -53,7 +65,7 @@ async function generateEtiquette({ nom, prenom, code_barre, afficherCodeEnClair 
     // 1. Nom prénom en haut, deux lignes au maximum, tronqué au-delà. On mesure la
     //    hauteur réellement occupée au lieu de réserver deux lignes d'office : un nom
     //    court laisse ainsi sa place au code-barres.
-    doc.fontSize(TAILLE_NOM_PT);
+    doc.fontSize(modele.tailleNomPt);
     const texteNom = `${nom} ${prenom}`.trim();
     const hauteurNom = Math.min(
       doc.heightOfString(texteNom, { width: largeurUtile, align: 'center' }),
@@ -66,34 +78,36 @@ async function generateEtiquette({ nom, prenom, code_barre, afficherCodeEnClair 
       ellipsis: true,
     });
 
-    // 2. Code-barres : TOUTE la largeur utile et TOUTE la hauteur restante, les deux
-    //    dimensions fixées explicitement. Sur un code-barres 1D, seule la largeur des
-    //    barres compte pour le décodage : l'étirer verticalement ne gêne pas le lecteur,
-    //    et gagner en hauteur facilite la visée. Fixer les deux dimensions supprime au
-    //    passage tout calcul de rapport d'aspect — c'est lui qui rendait la hauteur
-    //    dépendante de la longueur du code et faisait déborder les codes courts sur une
-    //    seconde étiquette (#340).
+    // 2. Code-barres : toujours TOUTE la largeur utile — c'est la largeur des barres, et
+    //    elle seule, qui conditionne le décodage d'un code 1D. La hauteur dépend du
+    //    gabarit : `client` remplit tout l'espace restant (l'étirement vertical n'affecte
+    //    pas la lecture et facilite la visée), `emplacement` conserve les proportions
+    //    naturelles de l'image. Dans les deux cas la hauteur est PLAFONNÉE par la place
+    //    disponible : c'est ce plafond qui empêche le débordement sur une seconde
+    //    étiquette, que l'ancien calcul de rapport d'aspect provoquait (#340).
     const yCodeBarre = marge + hauteurNom + ecart;
     // Place réservée au code en clair : sa hauteur de ligne AVEC interligne, car c'est
     // celle que pdfkit utilise pour décider de changer de page. Rien à réserver si on
     // ne l'écrit pas.
-    const placeCodeEnClair = afficherCodeEnClair
+    const placeCodeEnClair = modele.codeEnClair
       ? ecart + doc.fontSize(TAILLE_CODE_PT).currentLineHeight(true)
       : 0;
-    const hauteurCodeBarre = hauteur - yCodeBarre - placeCodeEnClair - marge;
-    if (hauteurCodeBarre <= 0) {
+    const hauteurDispo = hauteur - yCodeBarre - placeCodeEnClair - marge;
+    if (hauteurDispo <= 0) {
       throw new Error(
         `Étiquette trop petite (${largeur.toFixed(0)}×${hauteur.toFixed(0)} pt) : ` +
           `il ne reste aucune place pour le code-barres.`
       );
     }
-    doc.image(doc.openImage(imageCodeBarre), marge, yCodeBarre, {
-      width: largeurUtile,
-      height: hauteurCodeBarre,
-    });
+    const img = doc.openImage(imageCodeBarre);
+    const hauteurProportionnee = largeurUtile * (img.height / img.width);
+    const hauteurCodeBarre = modele.etirerCodeBarre
+      ? hauteurDispo
+      : Math.min(hauteurDispo, hauteurProportionnee);
+    doc.image(img, marge, yCodeBarre, { width: largeurUtile, height: hauteurCodeBarre });
 
     // 3. Code en clair, même écart sous le code-barres.
-    if (afficherCodeEnClair) {
+    if (modele.codeEnClair) {
       doc.text(code_barre, marge, yCodeBarre + hauteurCodeBarre + ecart, {
         width: largeurUtile,
         align: 'center',

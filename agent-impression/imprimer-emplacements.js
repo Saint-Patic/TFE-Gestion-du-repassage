@@ -2,8 +2,8 @@ const { generateEtiquette } = require('./etiquette');
 const { envoyer } = require('./sortie');
 
 // Génère (ou imprime, selon MODE_SORTIE) une étiquette par code emplacement.
-// Réutilise la mise en page client : le code sert de titre ET de code-barres. Le code
-// en clair est supprimé, puisqu'il ferait doublon avec le titre.
+// Le code sert de titre ET de code-barres, d'où le gabarit « emplacement » : pas de
+// répétition du code en clair, et une mise en page plus sobre que celle des clientes.
 async function imprimerEmplacements(codes) {
   const resultats = [];
   for (const code of codes) {
@@ -11,7 +11,7 @@ async function imprimerEmplacements(codes) {
       nom: code,
       prenom: '',
       code_barre: code,
-      afficherCodeEnClair: false,
+      gabarit: 'emplacement',
     });
     const sortie = await envoyer(pdf, `emplacement-${code}`);
     resultats.push({ code, ...sortie });
