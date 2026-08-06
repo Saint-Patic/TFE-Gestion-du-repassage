@@ -179,6 +179,43 @@ Toujours faire la première mise en route en `console` : c'est ce qui valide le 
 VPS **avant** de consommer un vrai SMS. Un refus d'authentification apparaît alors comme
 `Appel /en-attente refusé (HTTP 401)` dans le journal.
 
+## Changer le nom ou le PIN d'une utilisatrice
+
+`scripts/seed-utilisateurs.js` ne crée qu'**une seule fois** : il s'arrête dès que la table
+`utilisateur` contient une ligne. Sur une base déjà peuplée — donc en production —, modifier le
+`.env` ou ce script n'a **aucun effet**. Et il n'existe aucune interface d'administration :
+`routes/utilisateurs.js` n'expose qu'un `GET` (la liste pour l'écran « choisir son nom »).
+
+Le changement passe donc par `scripts/mettre-a-jour-utilisateurs.js`, qui modifie les lignes
+**en place** :
+
+```bash
+cd /opt/manne/backend
+# 1. renseigner NOM_* et/ou PIN_* dans .env  (voir .env.example)
+node scripts/mettre-a-jour-utilisateurs.js --simuler   # affiche le plan, n'écrit rien
+node scripts/mettre-a-jour-utilisateurs.js             # applique
+```
+
+Points à connaître :
+
+- ⚠️ **Ne jamais supprimer puis re-semer les utilisatrices.**
+  `historique_statut.id_utilisateur` et `commande.id_repasseuse` les référencent : la clé
+  étrangère bloquerait l'opération, ou l'on effacerait la trace de qui a fait quoi — la valeur
+  probante en cas de litige. Le script conserve les UUID, donc tout l'historique.
+- Chaque variable est **optionnelle** : absente, le champ correspondant n'est pas touché. On peut
+  ne changer qu'un PIN.
+- Le script est **rejouable** : un PIN déjà correct n'est pas réécrit (sans quoi le sel aléatoire
+  de bcrypt produirait un hachage différent à état identique, et le script annoncerait une
+  modification imaginaire).
+- Le PIN n'est **jamais journalisé**, ni en clair ni haché. Un PIN de moins ou plus de 4 chiffres
+  fait échouer le script avant toute écriture.
+- Les repasseuses sont identifiées par leur **rang** (`ORDER BY id_utilisateur`), stable mais
+  arbitraire : vérifier avec `--simuler` que `REPASSEUSE_1` désigne bien la personne voulue, et
+  échanger les valeurs dans le `.env` sinon. Le nom actuel ne peut pas servir de clé, il
+  deviendrait ininterprétable au second passage.
+- ⚠️ Les **vrais prénoms** vont dans `.env`, jamais dans `scripts/seed-utilisateurs.js` : ce
+  fichier est versionné sur un dépôt **public**.
+
 ## Agent d'impression (poste de la gérante, US #80, mise en service #340)
 
 L'imprimante MUNBYN RW130B est branchée **en USB** sur le PC de la gérante. Le VPS ne peut donc
