@@ -23,3 +23,13 @@ test('un code long tient sur une seule page', async () => {
   const pdf = await generateEtiquette({ nom: 'Dupont', prenom: 'Marie', code_barre: 'ABCD2345' });
   expect(compterPages(pdf)).toBe(1);
 });
+
+// Sur une étiquette d'emplacement, le titre EST déjà le code : le répéter en clair
+// sous le code-barres est une redondance. Un PDF sans ce texte est plus léger.
+test('le code en clair peut être supprimé de la mise en page', async () => {
+  const commun = { nom: 'A1G', prenom: '', code_barre: 'A1G' };
+  const avecCode = await generateEtiquette(commun);
+  const sansCode = await generateEtiquette({ ...commun, afficherCodeEnClair: false });
+  expect(sansCode.length).toBeLessThan(avecCode.length);
+  expect(compterPages(sansCode)).toBe(1);
+});
