@@ -9,8 +9,11 @@ function tailleEtiquette() {
   return [l * MM_VERS_PT, h * MM_VERS_PT];
 }
 
-// Génère un PDF d'étiquette (Buffer) : nom prénom + code-barres Code 128 + code en clair.
-async function generateEtiquette({ nom, prenom, code_barre }) {
+// Génère un PDF d'étiquette (Buffer) : nom prénom + code-barres Code 128, et le code
+// en clair dessous. Ce dernier se supprime par `afficherCodeEnClair: false` — utile
+// pour un emplacement, dont le titre est déjà le code : la place libérée revient au
+// code-barres, qui devient plus haut et donc plus facile à scanner.
+async function generateEtiquette({ nom, prenom, code_barre, afficherCodeEnClair = true }) {
   const imageCodeBarre = await bwipjs.toBuffer({
     bcid: 'code128',
     text: code_barre,
@@ -50,20 +53,25 @@ async function generateEtiquette({ nom, prenom, code_barre }) {
     const largeurUtile = largeur - marge * 2;
     const img = doc.openImage(imageCodeBarre);
     const yCodeBarre = basNom + ecart;
-    // Hauteur de ligne AVEC interligne : c'est celle que pdfkit utilise pour
-    // décider de changer de page, donc celle qu'il faut réserver.
-    const hauteurTexteCode = doc.fontSize(7).currentLineHeight(true);
-    const hauteurDispo = hauteur - yCodeBarre - ecart - hauteurTexteCode - marge;
+    // Place réservée au code en clair : sa hauteur de ligne AVEC interligne, car
+    // c'est celle que pdfkit utilise pour décider de changer de page. Rien à
+    // réserver si on ne l'écrit pas.
+    const placeCodeEnClair = afficherCodeEnClair
+      ? ecart + doc.fontSize(7).currentLineHeight(true)
+      : 0;
+    const hauteurDispo = hauteur - yCodeBarre - placeCodeEnClair - marge;
     const echelle = Math.min(largeurUtile / img.width, hauteurDispo / img.height);
     const largeurCodeBarre = img.width * echelle;
     const hauteurCodeBarre = img.height * echelle;
     doc.image(img, (largeur - largeurCodeBarre) / 2, yCodeBarre, { width: largeurCodeBarre });
 
     // 3. Code en clair, même écart sous le code-barres.
-    doc.text(code_barre, marge, yCodeBarre + hauteurCodeBarre + ecart, {
-      width: largeurUtile,
-      align: 'center',
-    });
+    if (afficherCodeEnClair) {
+      doc.text(code_barre, marge, yCodeBarre + hauteurCodeBarre + ecart, {
+        width: largeurUtile,
+        align: 'center',
+      });
+    }
 
     doc.end();
   });
