@@ -19,8 +19,17 @@ async function generateEtiquette({ nom, prenom, code_barre }) {
     includetext: false,
   });
 
+  const marge = 4;
+  const ecart = 4; // même écart nom→code-barres et code-barres→numéro
   const [largeur, hauteur] = tailleEtiquette();
-  const doc = new PDFDocument({ size: [largeur, hauteur], margin: 4 });
+  // Marge basse à 0 : une étiquette DOIT tenir sur une seule page, sinon
+  // l'imprimante consomme deux étiquettes. C'est la marge basse qui déclenche la
+  // pagination automatique de pdfkit ; on la neutralise et on réserve nous-mêmes
+  // la place nécessaire, puisque toute la mise en page est positionnée à la main.
+  const doc = new PDFDocument({
+    size: [largeur, hauteur],
+    margins: { top: marge, bottom: 0, left: marge, right: marge },
+  });
   const morceaux = [];
 
   return await new Promise((resolve, reject) => {
@@ -28,22 +37,30 @@ async function generateEtiquette({ nom, prenom, code_barre }) {
     doc.on('end', () => resolve(Buffer.concat(morceaux)));
     doc.on('error', reject);
 
-    const marge = 4;
-    const ecart = 4; // même écart nom→code-barres et code-barres→numéro
-
     // 1. Nom prénom en haut.
     doc.fontSize(8).text(`${nom} ${prenom}`, { align: 'center' });
     const basNom = doc.y;
 
-    // 2. Code-barres sous le nom, mis à l'échelle sur la largeur dispo.
+    // 2. Code-barres sous le nom, CONTENU dans la place restante (jamais étiré).
+    //    bwip-js produit une image de hauteur fixe dont la largeur croît avec le
+    //    nombre de caractères : l'étirer sur toute la largeur utile rendait un code
+    //    court (emplacement « A1G ») deux fois plus haut qu'un code client, le code
+    //    en clair passait à la page suivante et l'imprimante sortait DEUX étiquettes.
+    //    On retient donc le facteur d'échelle le plus contraignant des deux.
     const largeurUtile = largeur - marge * 2;
     const img = doc.openImage(imageCodeBarre);
-    const hauteurCodeBarre = (img.height / img.width) * largeurUtile;
     const yCodeBarre = basNom + ecart;
-    doc.image(img, marge, yCodeBarre, { width: largeurUtile });
+    // Hauteur de ligne AVEC interligne : c'est celle que pdfkit utilise pour
+    // décider de changer de page, donc celle qu'il faut réserver.
+    const hauteurTexteCode = doc.fontSize(7).currentLineHeight(true);
+    const hauteurDispo = hauteur - yCodeBarre - ecart - hauteurTexteCode - marge;
+    const echelle = Math.min(largeurUtile / img.width, hauteurDispo / img.height);
+    const largeurCodeBarre = img.width * echelle;
+    const hauteurCodeBarre = img.height * echelle;
+    doc.image(img, (largeur - largeurCodeBarre) / 2, yCodeBarre, { width: largeurCodeBarre });
 
     // 3. Code en clair, même écart sous le code-barres.
-    doc.fontSize(7).text(code_barre, marge, yCodeBarre + hauteurCodeBarre + ecart, {
+    doc.text(code_barre, marge, yCodeBarre + hauteurCodeBarre + ecart, {
       width: largeurUtile,
       align: 'center',
     });
