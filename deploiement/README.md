@@ -25,7 +25,7 @@ Pour ne même pas les voir apparaître sur le serveur, installer avec `npm ci --
 
 ## Seed initial des emplacements (étagères)
 
-Les 42 emplacements physiques (`A1G`…`E3D`) doivent exister en base pour l'encodage
+Les 54 emplacements physiques (`A1G`…`E3D`) doivent exister en base pour l'encodage
 (scan des emplacements, US #160). À lancer **une fois** après le premier déploiement qui
 inclut #160. Le script est **idempotent** (relançable sans créer de doublon) :
 
@@ -34,8 +34,14 @@ cd /opt/manne/backend
 node scripts/seed-emplacements.js
 ```
 
-Sortie attendue : `Emplacements insérés : 42 (sur 42).` (puis `0 (sur 42).` aux relances).
+Sortie attendue : `Emplacements insérés : 54 (sur 54).` (puis `0 (sur 54).` aux relances).
 Le script lit les identifiants de la base dans `backend/.env`.
+
+⚠️ Sur un serveur déployé **avant** le #340, la base ne contient que 42 emplacements : les
+grandes étagères A–D ont un **4ᵉ étage** que le modèle ignorait. Jouer d'abord la migration
+`etendre-niveaux-emplacement.js` (voir la liste ci-dessous), **puis** relancer ce seed, qui
+insérera les 12 lignes manquantes (`A4G`…`D4D`). Dans l'autre ordre, la contrainte `CHECK`
+encore bornée à 3 les rejetterait.
 
 ## Migration — colonne cintres_entr_rendus (US #170)
 
@@ -63,10 +69,16 @@ node scripts/ajouter-au-sol.js              # US #190 — emplacement « au sol 
 node scripts/ajouter-id-repasseuse.js       # US #200 — attribution des commandes
 node scripts/ajouter-repassage-debut.js     # US #220 — démarrage du timer
 node scripts/creer-sms-en-attente.js        # US #240 — file d'attente des SMS
+node scripts/etendre-niveaux-emplacement.js # US #340 — 4 étages sur A–D
+node scripts/seed-emplacements.js           # US #340 — ajoute les 12 cases du 4e étage
 ```
 
 Chacune affiche une ligne de confirmation. Les scripts lisent les identifiants de la base dans
 `backend/.env`.
+
+Les deux dernières lignes vont **de pair et dans cet ordre** : la migration élargit la contrainte
+`CHECK` sur `niveau` (de 1–3 à 1–4), le seed crée ensuite les emplacements correspondants. La
+migration ne touche **aucune donnée existante** — les niveaux 1 à 3 déjà en base restent valides.
 
 ## Emplacements sur le serveur
 
