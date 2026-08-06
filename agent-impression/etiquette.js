@@ -3,6 +3,14 @@ const PDFDocument = require('pdfkit');
 
 const MM_VERS_PT = 2.834645669;
 
+// Tailles de la mise en page, en points. Relevées à la hausse au #340 après impression
+// réelle : le nom et le code-barres d'origine se lisaient mal à bout de bras.
+const TAILLE_NOM_PT = 11;
+const TAILLE_CODE_PT = 8;
+// Le nom est borné à deux lignes : sans cette limite, un nom long repousserait le
+// code-barres jusqu'à ne plus lui laisser de place.
+const MAX_LIGNES_NOM = 2;
+
 function tailleEtiquette() {
   const l = Number(process.env.ETIQUETTE_L_MM || 50);
   const h = Number(process.env.ETIQUETTE_H_MM || 30);
@@ -40,30 +48,49 @@ async function generateEtiquette({ nom, prenom, code_barre, afficherCodeEnClair 
     doc.on('end', () => resolve(Buffer.concat(morceaux)));
     doc.on('error', reject);
 
-    // 1. Nom prénom en haut.
-    doc.fontSize(8).text(`${nom} ${prenom}`, { align: 'center' });
-    const basNom = doc.y;
-
-    // 2. Code-barres sous le nom, CONTENU dans la place restante (jamais étiré).
-    //    bwip-js produit une image de hauteur fixe dont la largeur croît avec le
-    //    nombre de caractères : l'étirer sur toute la largeur utile rendait un code
-    //    court (emplacement « A1G ») deux fois plus haut qu'un code client, le code
-    //    en clair passait à la page suivante et l'imprimante sortait DEUX étiquettes.
-    //    On retient donc le facteur d'échelle le plus contraignant des deux.
     const largeurUtile = largeur - marge * 2;
-    const img = doc.openImage(imageCodeBarre);
-    const yCodeBarre = basNom + ecart;
-    // Place réservée au code en clair : sa hauteur de ligne AVEC interligne, car
-    // c'est celle que pdfkit utilise pour décider de changer de page. Rien à
-    // réserver si on ne l'écrit pas.
+
+    // 1. Nom prénom en haut, deux lignes au maximum, tronqué au-delà. On mesure la
+    //    hauteur réellement occupée au lieu de réserver deux lignes d'office : un nom
+    //    court laisse ainsi sa place au code-barres.
+    doc.fontSize(TAILLE_NOM_PT);
+    const texteNom = `${nom} ${prenom}`.trim();
+    const hauteurNom = Math.min(
+      doc.heightOfString(texteNom, { width: largeurUtile, align: 'center' }),
+      doc.currentLineHeight(true) * MAX_LIGNES_NOM
+    );
+    doc.text(texteNom, marge, marge, {
+      width: largeurUtile,
+      align: 'center',
+      height: hauteurNom,
+      ellipsis: true,
+    });
+
+    // 2. Code-barres : TOUTE la largeur utile et TOUTE la hauteur restante, les deux
+    //    dimensions fixées explicitement. Sur un code-barres 1D, seule la largeur des
+    //    barres compte pour le décodage : l'étirer verticalement ne gêne pas le lecteur,
+    //    et gagner en hauteur facilite la visée. Fixer les deux dimensions supprime au
+    //    passage tout calcul de rapport d'aspect — c'est lui qui rendait la hauteur
+    //    dépendante de la longueur du code et faisait déborder les codes courts sur une
+    //    seconde étiquette (#340).
+    const yCodeBarre = marge + hauteurNom + ecart;
+    // Place réservée au code en clair : sa hauteur de ligne AVEC interligne, car c'est
+    // celle que pdfkit utilise pour décider de changer de page. Rien à réserver si on
+    // ne l'écrit pas.
     const placeCodeEnClair = afficherCodeEnClair
-      ? ecart + doc.fontSize(7).currentLineHeight(true)
+      ? ecart + doc.fontSize(TAILLE_CODE_PT).currentLineHeight(true)
       : 0;
-    const hauteurDispo = hauteur - yCodeBarre - placeCodeEnClair - marge;
-    const echelle = Math.min(largeurUtile / img.width, hauteurDispo / img.height);
-    const largeurCodeBarre = img.width * echelle;
-    const hauteurCodeBarre = img.height * echelle;
-    doc.image(img, (largeur - largeurCodeBarre) / 2, yCodeBarre, { width: largeurCodeBarre });
+    const hauteurCodeBarre = hauteur - yCodeBarre - placeCodeEnClair - marge;
+    if (hauteurCodeBarre <= 0) {
+      throw new Error(
+        `Étiquette trop petite (${largeur.toFixed(0)}×${hauteur.toFixed(0)} pt) : ` +
+          `il ne reste aucune place pour le code-barres.`
+      );
+    }
+    doc.image(doc.openImage(imageCodeBarre), marge, yCodeBarre, {
+      width: largeurUtile,
+      height: hauteurCodeBarre,
+    });
 
     // 3. Code en clair, même écart sous le code-barres.
     if (afficherCodeEnClair) {

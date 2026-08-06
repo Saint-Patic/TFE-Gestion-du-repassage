@@ -24,6 +24,17 @@ test('un code long tient sur une seule page', async () => {
   expect(compterPages(pdf)).toBe(1);
 });
 
+// Un nom long ne doit ni déborder sur une seconde étiquette, ni écraser le code-barres :
+// le texte est borné à deux lignes et tronqué au-delà.
+test('un nom très long tient sur une seule page', async () => {
+  const pdf = await generateEtiquette({
+    nom: 'Vandenberghe-Delacroix',
+    prenom: 'Marie-Christine Josephine',
+    code_barre: 'ABCD2345',
+  });
+  expect(compterPages(pdf)).toBe(1);
+});
+
 // Sur une étiquette d'emplacement, le titre EST déjà le code : le répéter en clair
 // sous le code-barres est une redondance. Un PDF sans ce texte est plus léger.
 test('le code en clair peut être supprimé de la mise en page', async () => {
