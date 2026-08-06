@@ -179,6 +179,114 @@ Toujours faire la première mise en route en `console` : c'est ce qui valide le 
 VPS **avant** de consommer un vrai SMS. Un refus d'authentification apparaît alors comme
 `Appel /en-attente refusé (HTTP 401)` dans le journal.
 
+## Agent d'impression (poste de la gérante, US #80, mise en service #340)
+
+L'imprimante MUNBYN RW130B est branchée **en USB** sur le PC de la gérante. Le VPS ne peut donc
+pas imprimer : comme pour la passerelle SMS, c'est un petit programme **local** qui pilote le
+périphérique. Le navigateur de la gérante appelle `http://localhost:4000`, l'agent fabrique le
+PDF et le remet au pilote Windows.
+
+### Installation sur le PC de la gérante
+
+Windows uniquement : `pdf-to-printer` n'existe que sur cette plateforme (c'est pourquoi il est
+déclaré en `optionalDependencies` et chargé par un `require` paresseux).
+
+1. Installer le **pilote ITPP130** de la MUNBYN, brancher l'imprimante, imprimer la page de test
+   de Windows. Tant qu'elle ne sort pas, le problème n'est pas applicatif.
+2. Régler le **format de papier par défaut** de l'imprimante sur celui du rouleau — **50 × 30 mm**.
+   C'est le réglage le plus important : avec un format A4 par défaut, le pilote met l'étiquette à
+   l'échelle d'une feuille et le contenu s'étale de travers sur plusieurs étiquettes.
+3. Installer **Node.js LTS** et **Git for Windows**, puis :
+
+```
+cd %USERPROFILE%
+git clone https://github.com/Saint-Patic/TFE-Gestion-du-repassage.git
+cd TFE-Gestion-du-repassage\agent-impression
+npm ci
+npm ls pdf-to-printer
+```
+
+`npm ls` doit afficher une version. Si PowerShell refuse `npm` (« l'exécution de scripts est
+désactivée »), c'est son `ExecutionPolicy` qui bloque le lanceur `npm.ps1` : utiliser l'**invite de
+commandes**, ou autoriser les scripts locaux par
+`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` (sans droits
+administrateur). Le démarrage automatique décrit plus bas appelle `node` directement et n'est donc
+pas concerné.
+
+### Configuration
+
+Copier `.env.example` en `.env` dans `agent-impression`, et renseigner :
+
+```
+MODE_SORTIE=imprimante
+NOM_IMPRIMANTE=Munbyn ITPP130
+ORIGINE_CORS=https://vps-a87c8d0b.vps.ovh.net
+PORT_AGENT=4000
+```
+
+Le nom de l'imprimante doit être **exact** ; le relever par
+`Get-Printer | Select-Object Name, DriverName, PortName`. Ne pas créer ce fichier avec le
+Bloc-notes : il l'enregistre volontiers en `.env.txt`, et un BOM UTF-8 se collerait au nom de la
+première clé, qui deviendrait illisible. En PowerShell, depuis `agent-impression` :
+
+```powershell
+@"
+MODE_SORTIE=imprimante
+NOM_IMPRIMANTE=Munbyn ITPP130
+ORIGINE_CORS=https://vps-a87c8d0b.vps.ovh.net
+PORT_AGENT=4000
+"@ | Set-Content -Path .env -Encoding ascii
+```
+
+### Démarrage automatique (ouverture de session)
+
+La gérante ne doit avoir **rien à lancer** : elle allume son PC, l'agent est là. Le dépôt fournit
+`agent-impression\demarrer-agent.cmd`, qui fait le `cd` indispensable avant d'appeler `node`.
+
+1. Ouvrir le dossier de démarrage : `Win+R` → `shell:startup`.
+2. Y créer un **raccourci** vers `%USERPROFILE%\TFE-Gestion-du-repassage\agent-impression\demarrer-agent.cmd`
+   (clic droit → *Nouveau* → *Raccourci*).
+3. Propriétés du raccourci → **Exécuter : Réduite**, pour que la fenêtre ne gêne pas.
+4. Fermer la session et la réouvrir, puis vérifier `http://localhost:4000/sante` → `{"statut":"ok"}`.
+
+Pourquoi ce mécanisme plutôt qu'un vrai service Windows (nssm, node-windows) : un service tourne
+**hors session utilisateur**, et une imprimante USB installée pour un utilisateur donné y est
+classiquement invisible. Le démarrage à l'ouverture de session est ici plus fiable, pas moins. Sa
+limite est assumée : rien ne relance l'agent s'il s'arrête en cours de journée. Si cela se produit
+en usage réel, la suite est une tâche du Planificateur avec « redémarrer en cas d'échec » — même
+action, même script, seul le déclencheur change.
+
+### Vérifier la chaîne complète
+
+Trois contrôles, chacun éliminant une couche :
+
+```
+node -e "require('dotenv').config(); console.log(process.env.MODE_SORTIE, process.env.NOM_IMPRIMANTE)"
+node imprimer-emplacements.js A1G
+```
+
+1. `http://localhost:4000/sante` → l'agent écoute. Attention : cette route ne touche **ni** le PDF
+   **ni** l'imprimante, elle ne prouve que la liaison navigateur → agent.
+2. La première commande doit afficher `imprimante Munbyn ITPP130`. Si `MODE_SORTIE` est vide, le
+   `.env` n'est pas lu et rien ne sera jamais imprimé.
+3. La seconde imprime une étiquette et **annonce le mode** : `envoyée(s) à l'imprimante` ou
+   `AUCUNE impression`. Ce message est explicite depuis le #340, précisément parce qu'un
+   « étiquette générée » muet avait fait chercher un défaut d'imprimante inexistant.
+
+Puis le parcours réel : depuis le navigateur du poste, créer une cliente sur l'app en HTTPS et
+cliquer « Imprimer l'étiquette ». Le PDF est toujours écrit dans `agent-impression\sorties\`, même
+en mode imprimante : le comparer au papier permet de distinguer un défaut de mise en page (le PDF
+est déjà faux) d'un défaut d'échelle du pilote (le PDF est bon, le papier ne l'est pas).
+
+### Étiquettes des emplacements
+
+```
+node imprimer-emplacements.js A1G A1C A1D A2G A2C A2D A3G A3C A3D A4G A4C A4D B1G B1C B1D B2G B2C B2D B3G B3C B3D B4G B4C B4D C1G C1C C1D C2G C2C C2D C3G C3C C3D C4G C4C C4D D1G D1C D1D D2G D2C D2D D3G D3C D3D D4G D4C D4D E1G E1D E2G E2D E3G E3D
+```
+
+54 étiquettes, dans l'ordre des étagères. L'emplacement « au sol » n'en a **pas** : il se choisit
+par bouton dans l'interface, jamais par scan (#190).
+
 ## Sauvegardes automatisées de la base (US #310)
 
 Un dump quotidien de `manne_bulles`, sept jours conservés sur le VPS, et une copie rapatriée hors
