@@ -37,10 +37,25 @@ test('un nom très long tient sur une seule page', async () => {
 
 // Sur une étiquette d'emplacement, le titre EST déjà le code : le répéter en clair
 // sous le code-barres est une redondance. Un PDF sans ce texte est plus léger.
-test('le code en clair peut être supprimé de la mise en page', async () => {
+test('le gabarit emplacement n’écrit pas le code en clair', async () => {
   const commun = { nom: 'A1G', prenom: '', code_barre: 'A1G' };
-  const avecCode = await generateEtiquette(commun);
-  const sansCode = await generateEtiquette({ ...commun, afficherCodeEnClair: false });
-  expect(sansCode.length).toBeLessThan(avecCode.length);
-  expect(compterPages(sansCode)).toBe(1);
+  const client = await generateEtiquette(commun);
+  const emplacement = await generateEtiquette({ ...commun, gabarit: 'emplacement' });
+  expect(emplacement.length).toBeLessThan(client.length);
+  expect(compterPages(emplacement)).toBe(1);
+});
+
+// Les deux gabarits ne doivent pas être ramenés à un seul : l'étiquette cliente a été
+// agrandie au #340, celle d'un emplacement devait garder sa mise en page d'origine.
+test('les deux gabarits produisent des mises en page différentes', async () => {
+  const commun = { nom: 'A1G', prenom: '', code_barre: 'A1G' };
+  const client = await generateEtiquette(commun);
+  const emplacement = await generateEtiquette({ ...commun, gabarit: 'emplacement' });
+  expect(emplacement.equals(client)).toBe(false);
+});
+
+test('un gabarit inconnu est refusé', async () => {
+  await expect(
+    generateEtiquette({ nom: 'A', prenom: '', code_barre: 'A', gabarit: 'etagere' })
+  ).rejects.toThrow(/Gabarit/);
 });
