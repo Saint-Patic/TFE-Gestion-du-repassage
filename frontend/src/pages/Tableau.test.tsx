@@ -75,12 +75,15 @@ const commandePrete = {
 };
 
 describe('Tableau', () => {
-  test('affiche les 4 colonnes', async () => {
+  test('affiche les 4 colonnes, dont « Récupéré » borné au jour', async () => {
     rendre();
     expect(await screen.findByText('À faire')).toBeInTheDocument();
     expect(screen.getByText('En cours')).toBeInTheDocument();
     expect(screen.getByText('Fait')).toBeInTheDocument();
-    expect(screen.getByText('Récupéré')).toBeInTheDocument();
+    // Le serveur ne renvoie que les remises du jour (`date_recuperation::date = CURRENT_DATE`,
+    // routes/commandes.js). Le libellé doit le dire : sans cette précision, une repasseuse
+    // pourrait croire que les remises de la veille ont été perdues.
+    expect(screen.getByText('Récupéré (aujourd’hui)')).toBeInTheDocument();
   });
 
   test('un événement commandes:maj invalide la requête commandes', async () => {

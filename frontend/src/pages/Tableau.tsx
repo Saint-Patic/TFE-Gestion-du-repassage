@@ -16,7 +16,10 @@ const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
   { statut: 'a_faire', titre: 'À faire' },
   { statut: 'en_cours', titre: 'En cours' },
   { statut: 'fait', titre: 'Fait' },
-  { statut: 'recupere', titre: 'Récupéré' },
+  // « aujourd'hui » n'est pas décoratif : le serveur ne renvoie que les remises du jour
+  // (`date_recuperation::date = CURRENT_DATE`). Sans cette mention, la disparition des
+  // remises de la veille à minuit passerait pour une perte de données.
+  { statut: 'recupere', titre: 'Récupéré (aujourd’hui)' },
 ];
 
 export function Tableau() {
