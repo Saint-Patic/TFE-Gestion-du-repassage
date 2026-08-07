@@ -214,37 +214,152 @@ Attendu : un fichier `manne_bulles-AAAAMMJJ-HHMM.dump` en `-rw-r----- postgres d
 Si le groupe affiché est `postgres` et non `debian`, le bit setgid n'a pas été posé — reprendre le
 `chmod 2750`.
 
-### Rapatriement hors site
+### Rapatriement hors site (PC de la gérante)
 
-⚠️ **`rsync` doit être installé des DEUX côtés** — il lance une instance distante pour comparer les
-fichiers. Si le VPS ne l'a pas, l'erreur est trompeuse (`rsync: command not found` suivi d'un
-`connection unexpectedly closed`) car elle semble venir de la machine locale :
+Les dumps ne vivent sur le VPS que sept jours, et sur une seule machine : **perdre le VPS, ce serait
+perdre la base**. Une copie est donc rapatriée chaque jour sur le PC de la gérante — allumé tous les
+jours ouvrables, sur place, et où le dépôt est déjà cloné pour l'agent d'impression.
+
+Le mécanisme tient en une phrase : **le PC de la gérante se connecte en SSH sans rien demander, et le
+VPS lui débite une archive `tar` des sauvegardes.** Ni `rsync` ni `scp` ne sont utilisés — ils ne
+peuvent pas l'être, la clé étant associée à une **commande forcée** côté serveur.
+
+⚠️ **La clé du PC de la gérante n'ouvre PAS de shell sur la production.** Elle ne permet qu'une chose :
+recevoir les sauvegardes. C'est délibéré : cette machine est un poste de bureau partagé, dans un local
+commercial. La clé d'Alexis, dans le même fichier, garde son accès complet — les restrictions
+s'appliquent **par clé**.
+
+#### 1. Sur le VPS
 
 ```bash
-# sur le VPS, une seule fois
-sudo apt install rsync
+sudo cp /opt/manne/deploiement/debiter-sauvegardes.sh /usr/local/bin/debiter-sauvegardes
+sudo chmod 755 /usr/local/bin/debiter-sauvegardes
 ```
 
-Depuis la machine d'Alexis :
+Le script tourne sous `debian`, qui lit `/var/backups/manne` **par le groupe** grâce au setgid posé
+plus haut. Aucun `sudo`, aucun mot de passe.
+
+La ligne à ajouter dans `~debian/.ssh/authorized_keys` est donnée à l'étape 2, une fois la clé
+générée.
+
+#### 2. Sur le PC de la gérante — la clé
+
+Dans **Git Bash** (installé avec Git for Windows) :
+
+```bash
+cd ~/chemin/vers/le/depot && git pull
+
+ssh-keygen -t ed25519 -f ~/.ssh/manne-sauvegardes -C "pc-gerante-sauvegardes" -N ""
+cat ~/.ssh/manne-sauvegardes.pub
+```
+
+La clé est générée **ici** : sa partie privée ne transite jamais. Pas de phrase de passe, parce
+qu'une tâche planifiée ne peut pas en saisir une — c'est acceptable *précisément parce que* la
+commande forcée réduit ce que la clé permet.
+
+Copier la sortie de `cat`, puis sur le VPS ajouter **une ligne** à `~debian/.ssh/authorized_keys`, en
+préfixant la clé publique par :
+
+```
+restrict,command="/usr/local/bin/debiter-sauvegardes" ssh-ed25519 AAAA... pc-gerante-sauvegardes
+```
+
+`restrict` désactive d'un coup terminal, redirection de ports, agent forwarding et X11 — et couvre
+aussi les capacités qu'OpenSSH ajouterait plus tard, ce qu'une liste de `no-*` ne ferait pas.
+
+Toujours dans Git Bash, créer `~/.ssh/config` :
+
+```
+Host manne-sauvegardes
+    HostName vps-a87c8d0b.vps.ovh.net
+    User debian
+    IdentityFile ~/.ssh/manne-sauvegardes
+    IdentitiesOnly yes
+    ConnectTimeout 30
+```
+
+⚠️ **Première connexion à faire à la main**, pour accepter l'empreinte du serveur :
+
+```bash
+ssh manne-sauvegardes > /tmp/essai.tar && tar -tf /tmp/essai.tar
+```
+
+Sans cette étape, la tâche planifiée échouera à son premier tour : en `BatchMode`, ssh **refuse** un
+hôte inconnu au lieu de poser la question.
+
+#### 3. Sur le PC de la gérante — la tâche planifiée
+
+```powershell
+cd <depot>\deploiement
+.\installer-tache-rapatriement.ps1
+```
+
+Si PowerShell refuse d'enregistrer la tâche, le relancer **en tant qu'administrateur**. Si la
+politique d'exécution bloque le script :
+`powershell -ExecutionPolicy Bypass -File .\installer-tache-rapatriement.ps1`.
+
+La tâche tourne à **10h00 sous la session ouverte de la gérante** : aucun mot de passe n'est stocké.
+L'option `StartWhenAvailable` rattrape l'exécution si le PC était éteint — c'est l'équivalent Windows
+du `Persistent=true` du timer systemd.
+
+#### Vérifier
+
+```bash
+# Dans Git Bash : lancer un rapatriement à la main
+"$PROGRAMFILES/Git/bin/bash.exe" ~/chemin/vers/le/depot/deploiement/rapatrier-sauvegardes.sh
+ls -l ~/sauvegardes-manne
+tail -5 ~/sauvegardes-manne/rapatriement.log
+```
+
+Attendu : une ligne `OK — N rapatriee(s), M conservee(s)`. Le journal est le seul témoin d'une tâche
+qui tourne sans que personne la regarde — **une ligne `ECHEC` répétée est le signal qu'il n'y a plus
+de copie hors site**, alors que tout semble normal par ailleurs.
+
+Preuve que le transfert est intègre, à faire une fois :
+
+```bash
+# sur le PC de la gérante
+sha256sum ~/sauvegardes-manne/manne_bulles-*.dump
+# sur le VPS
+sha256sum /var/backups/manne/manne_bulles-*.dump
+```
+
+Les empreintes doivent être identiques, octet pour octet.
+
+Preuve que la clé est bien bridée :
+
+```bash
+ssh manne-sauvegardes "cat /etc/passwd"
+```
+
+Doit renvoyer **l'archive tar**, pas le fichier demandé : l'argument du client est ignoré.
+
+#### Rétention et RGPD
+
+**7 jours des deux côtés**, purgés automatiquement par le script — là où la conservation était
+auparavant laissée à un ménage manuel que personne n'aurait fait sur ce poste.
+
+⚠️ **La purge n'a lieu qu'après un rapatriement réussi.** Si le VPS est injoignable, le script
+s'arrête sans rien supprimer : le jour où le serveur tombe pour de bon, la tâche planifiée ne doit pas
+effacer tranquillement la dernière copie qui reste.
+
+Limite assumée : la copie hors site protège contre la perte du serveur, **pas contre une erreur
+logique découverte plus de sept jours après coup**. Choix fait au nom de la minimisation et de la
+limitation de conservation.
+
+⚠️ **Ne pas placer `sauvegardes-manne` dans `Documents`, `Bureau` ou `OneDrive`.** Ces dossiers sont
+souvent synchronisés vers le cloud sur un PC Windows grand public : les données personnelles des
+clientes partiraient chez un sous-traitant non prévu. Le script utilise `$HOME` — vérifier avec
+`echo $HOME` dans Git Bash que cela pointe bien sur un **disque local** et non sur un lecteur réseau.
+
+#### Depuis le portable d'Alexis
+
+Sa clé n'est pas restreinte : une copie ponctuelle reste possible sans passer par ce dispositif.
 
 ```bash
 mkdir -p ~/sauvegardes-manne
-rsync -az debian@vps-a87c8d0b.vps.ovh.net:/var/backups/manne/ ~/sauvegardes-manne/
+scp debian@vps-a87c8d0b.vps.ovh.net:/var/backups/manne/manne_bulles-*.dump ~/sauvegardes-manne/
 ```
-
-⚠️ **Volontairement sans `--delete`.** Le VPS purge au bout de sept jours ; si `rsync` répercutait ces
-suppressions, les copies locales disparaîtraient au même rythme et la copie hors site n'apporterait
-aucune profondeur d'historique. En l'omettant, les copies s'accumulent localement — c'est là que vit
-la conservation longue.
-
-À planifier par une tâche `cron` utilisateur, par exemple tous les jours à 9h :
-
-```
-0 9 * * * rsync -az debian@vps-a87c8d0b.vps.ovh.net:/var/backups/manne/ ~/sauvegardes-manne/
-```
-
-Les copies locales n'ont **pas** de purge automatique : il revient à Alexis de supprimer celles qui ne
-servent plus (elles contiennent des données personnelles).
 
 ### Restaurer — procédure à connaître AVANT d'en avoir besoin
 
