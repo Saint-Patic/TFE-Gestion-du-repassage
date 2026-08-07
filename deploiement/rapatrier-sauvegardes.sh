@@ -29,7 +29,12 @@ echouer() {
 
 # BatchMode empêche toute question interactive (mot de passe, hôte inconnu) de figer la
 # tâche planifiée : ssh échoue au lieu d'attendre indéfiniment.
-ssh -o BatchMode=yes "$HOTE" > "$ARCHIVE" 2>> "$JOURNAL" \
+#
+# -T supprime la demande de terminal : la clé est posée avec « restrict », qui la refuse,
+# et ssh écrirait sinon « PTY allocation request failed » sur stderr à chaque lancement
+# manuel. Ce serait du bruit dans le journal, alors que celui-ci est le seul témoin du bon
+# fonctionnement de la tâche planifiée.
+ssh -T -o BatchMode=yes "$HOTE" > "$ARCHIVE" 2>> "$JOURNAL" \
     || echouer "connexion ou debit impossible"
 
 # On vérifie AVANT de déballer : un transfert coupé (Wi-Fi, PC éteint en pleine tâche) ne
