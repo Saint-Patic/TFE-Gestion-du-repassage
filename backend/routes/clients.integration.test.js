@@ -198,65 +198,112 @@ describe('PUT /api/clients/:id (US #100)', () => {
   });
 });
 
-describe('DELETE /api/clients/:id (US #100)', () => {
-  test('client sans commande → 200 { anonymise: false }', async () => {
-    const app = creerApp({
-      query: async (sql) => (sql.trim().startsWith('DELETE') ? { rowCount: 1 } : { rows: [] }),
-    });
-    const res = await request(app)
-      .delete('/api/clients/abc')
-      .set('Authorization', `Bearer ${jetonValide()}`);
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ anonymise: false });
-  });
-
-  test('client avec commandes (23503) → 200 { anonymise: true }', async () => {
-    const app = creerApp({
-      query: async (sql) => {
-        if (sql.trim().startsWith('DELETE')) {
-          const e = new Error('violation FK');
-          e.code = '23503';
-          throw e;
+describe('DELETE /api/clients/:id — suppression définitive', () => {
+  // Faux pool transactionnel qui JOURNALISE le SQL émis. C'est ce journal qui permet de prouver
+  // non seulement ce qui a été fait, mais surtout ce qui ne l'a PAS été (cf. le test du 409).
+  // Même technique que les tests de transaction du #160 et du #220.
+  function fauxPool({ clientTrouve = true, nbActives = 0, nbDetachees = 0, erreur = false } = {}) {
+    const appels = [];
+    const connexion = {
+      query: async (texte) => {
+        const sql = texte.trim();
+        appels.push(sql);
+        if (erreur && /^UPDATE commande/i.test(sql)) throw new Error('boom');
+        if (/^SELECT id_client FROM client/i.test(sql)) {
+          return { rowCount: clientTrouve ? 1 : 0, rows: clientTrouve ? [{ id_client: 'c1' }] : [] };
         }
-        if (sql.trim().startsWith('UPDATE')) return { rowCount: 1 };
-        return { rows: [] };
+        if (/count\(\*\)/i.test(sql)) return { rowCount: 1, rows: [{ nb: nbActives }] };
+        if (/^UPDATE commande/i.test(sql)) return { rowCount: nbDetachees };
+        if (/^DELETE FROM client/i.test(sql)) return { rowCount: 1 };
+        return { rowCount: 0, rows: [] };
       },
-    });
-    const res = await request(app)
+      release: () => {},
+    };
+    return {
+      pool: { query: async () => ({ rows: [] }), connect: async () => connexion },
+      appels,
+    };
+  }
+
+  test('sans jeton → 401', async () => {
+    const { pool } = fauxPool();
+    const res = await request(creerApp(pool)).delete('/api/clients/abc');
+    expect(res.status).toBe(401);
+  });
+
+  test('cliente sans commande → 200 et 0 commande détachée', async () => {
+    const { pool, appels } = fauxPool({ nbDetachees: 0 });
+    const res = await request(creerApp(pool))
       .delete('/api/clients/abc')
       .set('Authorization', `Bearer ${jetonValide()}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ anonymise: true });
+    expect(res.body).toEqual({ supprime: true, commandes_detachees: 0 });
+    expect(appels).toContain('COMMIT');
   });
 
-  test('id inexistant → 404', async () => {
-    const app = creerApp({
-      query: async (sql) => (sql.trim().startsWith('DELETE') ? { rowCount: 0 } : { rows: [] }),
-    });
-    const res = await request(app)
+  // Le cœur de la fonctionnalité : les commandes ne sont pas supprimées, elles perdent leur
+  // propriétaire. Sans cela, les statistiques du #300 diminueraient rétroactivement.
+  test('cliente avec 3 commandes récupérées → 200, les commandes sont détachées', async () => {
+    const { pool, appels } = fauxPool({ nbDetachees: 3 });
+    const res = await request(creerApp(pool))
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.commandes_detachees).toBe(3);
+    expect(appels.some((s) => /^UPDATE commande SET id_client = NULL/i.test(s))).toBe(true);
+    expect(appels.some((s) => /^DELETE FROM client/i.test(s))).toBe(true);
+    expect(appels).toContain('COMMIT');
+  });
+
+  // Le linge est physiquement dans l'atelier : refuser, et surtout ne RIEN écrire.
+  test('cliente avec une commande non récupérée → 409 sans aucun UPDATE ni DELETE', async () => {
+    const { pool, appels } = fauxPool({ nbActives: 2 });
+    const res = await request(creerApp(pool))
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(409);
+    expect(res.body.commandes_actives).toBe(2);
+    expect(res.body.message).toMatch(/2 commande/);
+    expect(appels.some((s) => /^UPDATE|^DELETE/i.test(s))).toBe(false);
+    expect(appels).toContain('ROLLBACK');
+    expect(appels).not.toContain('COMMIT');
+  });
+
+  test('cliente inexistante → 404 + ROLLBACK', async () => {
+    const { pool, appels } = fauxPool({ clientTrouve: false });
+    const res = await request(creerApp(pool))
       .delete('/api/clients/zzz')
       .set('Authorization', `Bearer ${jetonValide()}`);
     expect(res.status).toBe(404);
+    expect(appels).toContain('ROLLBACK');
   });
 
-  test('sans jeton → 401', async () => {
-    const app = creerApp({ query: async () => ({ rowCount: 0 }) });
-    const res = await request(app).delete('/api/clients/abc');
-    expect(res.status).toBe(401);
+  test('erreur SQL → 500 + ROLLBACK', async () => {
+    const { pool, appels } = fauxPool({ erreur: true });
+    const res = await request(creerApp(pool))
+      .delete('/api/clients/abc')
+      .set('Authorization', `Bearer ${jetonValide()}`);
+    expect(res.status).toBe(500);
+    expect(appels).toContain('ROLLBACK');
   });
 });
 
 describe('Autorisation par rôle sur les routes clients (US #115)', () => {
   // Pool "compteur" : révèle si le handler a été atteint (le garde doit couper avant).
+  // `connect` est indispensable depuis que DELETE travaille en transaction : sans lui, l'appel
+  // à pool.connect() lèverait un TypeError qu'Express 4 ne rattrape pas sur un handler async —
+  // la requête resterait sans réponse et le test attendrait indéfiniment au lieu d'échouer.
   function appCompteur() {
     let requetesDB = 0;
+    const repondre = async (sql) => {
+      requetesDB++;
+      if (sql.trim().startsWith('DELETE')) return { rowCount: 1 };
+      if (sql.trim().startsWith('UPDATE')) return { rowCount: 1, rows: [{ id_client: 'x' }] };
+      return { rowCount: 1, rows: [{ id_client: 'x', nom: 'A', prenom: 'B', telephone: '0', email: null, code_barre: 'AB', date_creation: 'x', nb: 0 }] };
+    };
     const app = creerApp({
-      query: async (sql) => {
-        requetesDB++;
-        if (sql.trim().startsWith('DELETE')) return { rowCount: 1 };
-        if (sql.trim().startsWith('UPDATE')) return { rowCount: 1, rows: [{ id_client: 'x' }] };
-        return { rows: [{ id_client: 'x', nom: 'A', prenom: 'B', telephone: '0', email: null, code_barre: 'AB', date_creation: 'x' }] };
-      },
+      query: repondre,
+      connect: async () => ({ query: repondre, release: () => {} }),
     });
     return { app, getRequetesDB: () => requetesDB };
   }

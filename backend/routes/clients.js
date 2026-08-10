@@ -157,30 +157,62 @@ function creerRouteurClients(pool) {
     }
   });
 
-  // Supprime un client ; s'il a des commandes (FK 23503), l'anonymise à la place (RGPD).
+  // Supprime DÉFINITIVEMENT une cliente. Ses commandes passées sont DÉTACHÉES (id_client → NULL),
+  // jamais supprimées : la requête des statistiques (#300) ne joint pas `client`, les chiffres
+  // restent donc exacts, alors qu'une cascade aurait fait disparaître les lignes de
+  // historique_statut sur lesquelles elle s'ancre.
+  //
+  // Refus tant qu'il reste des commandes non récupérées : le linge est alors physiquement dans
+  // l'atelier, et le Kanban ne doit jamais afficher une carte active sans cliente.
+  //
+  // La variable de connexion s'appelle `connexion` et non `client` comme ailleurs : ici `client`
+  // désigne déjà le domaine métier, le contresens serait permanent.
   routeur.delete('/:id', authentifier, exigerRole('gerante'), async (req, res) => {
-    const id = req.params.id;
+    const connexion = await pool.connect();
     try {
-      const resultat = await pool.query('DELETE FROM client WHERE id_client=$1', [id]);
-      if (resultat.rowCount === 0) {
+      await connexion.query('BEGIN');
+
+      // FOR UPDATE : ce verrou entre en conflit avec le FOR KEY SHARE que prend le contrôle de clé
+      // étrangère d'un INSERT INTO commande concurrent. Sans lui, une repasseuse pourrait encoder
+      // une commande depuis sa tablette entre le comptage et la suppression, et on laisserait une
+      // commande active orpheline. Avec lui, son encodage attend puis échoue proprement en 23503,
+      // cas déjà traité par POST /commandes (400).
+      const existe = await connexion.query(
+        'SELECT id_client FROM client WHERE id_client=$1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (existe.rowCount === 0) {
+        await connexion.query('ROLLBACK');
         return res.status(404).json({ message: 'Client introuvable.' });
       }
-      return res.json({ anonymise: false });
-    } catch (err) {
-      if (err.code === '23503') {
-        const anon = await pool.query(
-          `UPDATE client
-           SET nom='Anonymisé', prenom='', telephone='', email=NULL,
-               code_barre='ANON-' || id_client
-           WHERE id_client=$1`,
-          [id]
-        );
-        if (anon.rowCount === 0) {
-          return res.status(404).json({ message: 'Client introuvable.' });
-        }
-        return res.json({ anonymise: true });
+
+      // Le workflow n'a que quatre statuts : <> 'recupere' couvre exactement a_faire, en_cours, fait.
+      const actives = await connexion.query(
+        "SELECT count(*)::int AS nb FROM commande WHERE id_client=$1 AND statut <> 'recupere'",
+        [req.params.id]
+      );
+      const nbActives = actives.rows[0].nb;
+      if (nbActives > 0) {
+        await connexion.query('ROLLBACK');
+        return res.status(409).json({
+          message: `${nbActives} commande(s) non récupérée(s) : terminez la remise avant de supprimer.`,
+          commandes_actives: nbActives,
+        });
       }
+
+      const detachees = await connexion.query(
+        'UPDATE commande SET id_client = NULL WHERE id_client = $1',
+        [req.params.id]
+      );
+      await connexion.query('DELETE FROM client WHERE id_client = $1', [req.params.id]);
+
+      await connexion.query('COMMIT');
+      return res.json({ supprime: true, commandes_detachees: detachees.rowCount });
+    } catch {
+      await connexion.query('ROLLBACK');
       return res.status(500).json({ message: 'Erreur serveur.' });
+    } finally {
+      connexion.release();
     }
   });
 
