@@ -63,6 +63,8 @@ node scripts/ajouter-au-sol.js              # US #190 — emplacement « au sol 
 node scripts/ajouter-id-repasseuse.js       # US #200 — attribution des commandes
 node scripts/ajouter-repassage-debut.js     # US #220 — démarrage du timer
 node scripts/creer-sms-en-attente.js        # US #240 — file d'attente des SMS
+node scripts/etendre-niveaux-emplacement.js # US #340 — 4e étage des étagères A à D
+node scripts/rendre-id-client-nullable.js   # suppression définitive d'une cliente
 ```
 
 Chacune affiche une ligne de confirmation. Les scripts lisent les identifiants de la base dans
