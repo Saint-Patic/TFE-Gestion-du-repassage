@@ -351,6 +351,18 @@ describe('GET /api/commandes (US #180)', () => {
     expect(res.status).toBe(200);
     expect(sqlVue).toMatch(/c\.cintres_entr_nb/);
   });
+
+  // Une commande détachée (cliente supprimée) ne doit pas DISPARAÎTRE du tableau à cause d'un
+  // JOIN strict. Seule la colonne « Récupéré (aujourd'hui) » peut en afficher une, le garde-fou
+  // de la suppression interdisant de supprimer une cliente ayant des commandes actives.
+  test('tolère une commande sans cliente (LEFT JOIN + repli sur le nom)', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/LEFT JOIN client/);
+    expect(sqlVue).toMatch(/COALESCE\(cl\.nom, 'Cliente supprimée'\)/);
+  });
 });
 
 describe('PUT /api/commandes/:id (US #180)', () => {

@@ -53,14 +53,19 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         // inclus volontairement, sans quoi la carte disparaîtrait juste après la remise.
         filtreRepasseuse = ` AND (c.statut IN ('fait','recupere') OR c.id_repasseuse = $${params.length})`;
       }
+      // LEFT JOIN : une cliente supprimée laisse ses commandes détachées (id_client NULL). Le repli
+      // sur le nom vit dans le SQL et non dans React, pour n'avoir qu'un seul endroit à corriger —
+      // CarteCommande et ses tests restent inchangés. client_mobile vaut alors NULL, et le badge
+      // « à appeler » du #270 teste === false : une commande sans cliente n'en affiche donc aucun.
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
                 c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.cintres_entr_nb, c.date_reception, c.id_repasseuse,
                 c.repassage_debut, c.temps_repassage_s,
-                cl.nom AS client_nom, cl.prenom AS client_prenom,
+                COALESCE(cl.nom, 'Cliente supprimée') AS client_nom,
+                COALESCE(cl.prenom, '') AS client_prenom,
                 (cl.telephone ~ '^04[0-9]{8}$') AS client_mobile
          FROM commande c
-         JOIN client cl ON cl.id_client = c.id_client
+         LEFT JOIN client cl ON cl.id_client = c.id_client
          WHERE ( c.statut IN ('a_faire', 'en_cours', 'fait')
                  OR (c.statut = 'recupere' AND c.date_recuperation::date = CURRENT_DATE) )${filtreRepasseuse}
          ORDER BY c.prioritaire DESC, c.date_reception ASC`,
