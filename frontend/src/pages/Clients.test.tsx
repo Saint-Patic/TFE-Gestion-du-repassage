@@ -65,11 +65,39 @@ describe('Clients', () => {
 
   test('clic ✕ puis confirmation appelle supprimerClient', async () => {
     vi.mocked(listerClients).mockResolvedValue(liste);
-    vi.mocked(supprimerClient).mockResolvedValue({ anonymise: false });
+    vi.mocked(supprimerClient).mockResolvedValue({ supprime: true, commandes_detachees: 0 });
     rendre();
     await userEvent.click((await screen.findAllByLabelText('Supprimer le client'))[0]);
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
     expect(supprimerClient).toHaveBeenCalledWith('1');
+  });
+
+  // Le message doit dire ce qui est CONSERVÉ, pas seulement ce qui est supprimé : c'est la
+  // garantie que la gérante a besoin de lire avant de cliquer.
+  test('suppression réussie : le message annonce les commandes conservées', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    vi.mocked(supprimerClient).mockResolvedValue({ supprime: true, commandes_detachees: 12 });
+    rendre();
+    await userEvent.click((await screen.findAllByLabelText('Supprimer le client'))[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    expect(
+      await screen.findByText(/12 commande\(s\) conservées dans les statistiques/)
+    ).toBeInTheDocument();
+  });
+
+  // Le refus vient du serveur (409) et porte un compte : on affiche SON message, sans le
+  // reformuler côté client, sinon les deux formulations divergeront.
+  test('refus du serveur : le message du serveur s’affiche et la liste ne bouge pas', async () => {
+    vi.mocked(listerClients).mockResolvedValue(liste);
+    vi.mocked(supprimerClient).mockRejectedValue({
+      statut: 409,
+      corps: { message: '2 commande(s) non récupérée(s) : terminez la remise avant de supprimer.' },
+    });
+    rendre();
+    await userEvent.click((await screen.findAllByLabelText('Supprimer le client'))[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }));
+    expect(await screen.findByText(/2 commande\(s\) non récupérée\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Dupont Marie/)).toBeInTheDocument();
   });
 
   // Le code-barres n'était affiché qu'une fois, sur l'écran de création. Une étiquette

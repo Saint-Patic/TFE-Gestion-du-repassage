@@ -46,8 +46,21 @@ export function Clients() {
 
   async function confirmerSuppression() {
     if (!aSupprimer) return;
-    const { anonymise } = await supprimerClient(aSupprimer.id_client);
-    setMessage(anonymise ? 'Client anonymisé (commandes conservées).' : 'Client supprimé.');
+    setMessage(null);
+    setErreur(null);
+    try {
+      const { commandes_detachees } = await supprimerClient(aSupprimer.id_client);
+      setMessage(
+        commandes_detachees > 0
+          ? `Cliente supprimée — ${commandes_detachees} commande(s) conservées dans les statistiques.`
+          : 'Cliente supprimée.'
+      );
+    } catch (e) {
+      // On affiche le message du serveur tel quel : c'est lui qui connaît le nombre de commandes
+      // encore en cours. Le typage par canard évite d'importer ErreurApi ici.
+      const corps = (e as { corps?: { message?: string } }).corps;
+      setErreur(corps?.message ?? 'Suppression impossible.');
+    }
     setASupprimer(null);
     queryClient.invalidateQueries({ queryKey: ['clients'] });
   }
@@ -88,7 +101,7 @@ export function Clients() {
       {aSupprimer && (
         <ModaleConfirmation
           titre="Supprimer ce client ?"
-          message={`${aSupprimer.prenom} ${aSupprimer.nom} sera supprimé (ou anonymisé s'il a des commandes).`}
+          message={`${aSupprimer.prenom} ${aSupprimer.nom} sera définitivement supprimé. Ses commandes passées restent comptées dans les statistiques.`}
           libelleAction="Supprimer"
           onConfirmer={confirmerSuppression}
           onAnnuler={() => setASupprimer(null)}

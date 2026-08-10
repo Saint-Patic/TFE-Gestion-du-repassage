@@ -22,9 +22,15 @@ export function modifierClient(id: string, donnees: NouveauClient): Promise<Clie
   });
 }
 
-// Supprime un client (ou l'anonymise s'il a des commandes) ; indique lequel via `anonymise`.
-export function supprimerClient(id: string): Promise<{ anonymise: boolean }> {
-  return requeteApi<{ anonymise: boolean }>(`/clients/${id}`, { method: 'DELETE' });
+// Supprime DÉFINITIVEMENT un client. Ses commandes passées sont détachées (id_client → NULL) et
+// non supprimées : les statistiques restent exactes. Le serveur refuse en 409 tant qu'il reste
+// des commandes non récupérées.
+export function supprimerClient(
+  id: string
+): Promise<{ supprime: boolean; commandes_detachees: number }> {
+  return requeteApi<{ supprime: boolean; commandes_detachees: number }>(`/clients/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 // Historique des commandes d'une cliente, avec la chronologie de leurs changements de statut.

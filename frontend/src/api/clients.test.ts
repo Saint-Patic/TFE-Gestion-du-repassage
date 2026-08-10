@@ -47,14 +47,16 @@ describe('listerClients / modifierClient / supprimerClient', () => {
 
   test('supprimerClient → DELETE /api/clients/:id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ anonymise: false }), { status: 200 })
+      new Response(JSON.stringify({ supprime: true, commandes_detachees: 3 }), { status: 200 })
     );
     vi.stubGlobal('fetch', fetchMock);
     const r = await supprimerClient('abc');
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/clients/abc');
     expect(options.method).toBe('DELETE');
-    expect(r.anonymise).toBe(false);
+    // Le nombre de commandes détachées remonte tel quel : c'est lui qui alimente le message
+    // « N commande(s) conservées dans les statistiques ».
+    expect(r.commandes_detachees).toBe(3);
   });
 });
 
