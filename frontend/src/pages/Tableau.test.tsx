@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -162,5 +162,34 @@ describe('Tableau', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Annuler la clôture' }));
     expect(screen.queryByText(/reste/i)).not.toBeInTheDocument();
     expect(cloturerRepassage).not.toHaveBeenCalled();
+  });
+  test('clic sur une carte → ouvre la modale de détail', async () => {
+    rendre();
+    await userEvent.click(await screen.findByText(/Marie Dupont/));
+    const dialogue = await screen.findByRole('dialog');
+    expect(within(dialogue).getByText('Marie Dupont')).toBeInTheDocument();
+  });
+
+  // La modale dérive la commande de la liste : sans cela, une mise en pause venue d'une
+  // autre tablette la laisserait sur « Pause ».
+  test('la modale suit le temps réel', async () => {
+    const enMarche = [{ ...commandes[0], statut: 'en_cours' as const,
+      repassage_debut: new Date().toISOString(), temps_repassage_s: 0 }];
+    const enPause = [{ ...enMarche[0], repassage_debut: null, temps_repassage_s: 12 }];
+    vi.mocked(listerCommandes).mockReset()
+      .mockResolvedValueOnce(enMarche as never)
+      .mockResolvedValue(enPause as never);
+
+    rendre();
+    await userEvent.click(await screen.findByText(/Marie Dupont/));
+    const dialogue = await screen.findByRole('dialog');
+    expect(within(dialogue).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+
+    handlers['commandes:maj']();
+
+    await waitFor(() => {
+      expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reprendre' }))
+        .toBeInTheDocument();
+    });
   });
 });

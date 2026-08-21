@@ -10,6 +10,7 @@ import type { Commande, CommandeCarte, Emplacement } from '../api/types';
 import { CarteCommande } from '../composants/CarteCommande';
 import { ModaleModifierCommande } from '../composants/ModaleModifierCommande';
 import { ModaleConfirmation } from '../composants/ModaleConfirmation';
+import { ModaleDetailCommande } from '../composants/ModaleDetailCommande';
 import { PlacementMannes } from '../composants/PlacementMannes';
 
 const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
@@ -29,9 +30,13 @@ export function Tableau() {
   const { data: commandes = [] } = useQuery({ queryKey: ['commandes'], queryFn: listerCommandes });
   const [emplacements, setEmplacements] = useState<Emplacement[]>([]);
   const [aModifier, setAModifier] = useState<CommandeCarte | null>(null);
+  // Seul l'identifiant est mémorisé : la commande est redérivée de la liste à chaque rendu,
+  // ce qui garde la modale à jour et la ferme si la commande quitte le tableau.
+  const [idDetail, setIdDetail] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const champScan = useRef<HTMLInputElement>(null);
+  const detail = commandes.find((c) => c.id_commande === idDetail);
   const [aCloturer, setACloturer] = useState<Commande | null>(null);
   const [aRemettre, setARemettre] = useState<CommandeCarte | null>(null);
 
@@ -150,6 +155,7 @@ export function Tableau() {
             <h2 className="font-semibold">{col.titre}</h2>
             {commandes.filter((c) => c.statut === col.statut).map((c) => (
               <CarteCommande key={c.id_commande} commande={c} onModifier={setAModifier}
+                onOuvrir={(commande) => setIdDetail(commande.id_commande)}
                 onPause={estRepasseuse ? pause : undefined}
                 onReprendre={estRepasseuse ? reprendre : undefined}
                 onCintresEntreprise={estRepasseuse ? cintres : undefined} />
@@ -165,6 +171,15 @@ export function Tableau() {
           libelleAction="Remettre"
           onConfirmer={confirmerRemise}
           onAnnuler={() => setARemettre(null)}
+        />
+      )}
+
+      {detail && (
+        <ModaleDetailCommande
+          commande={detail}
+          onFermer={() => setIdDetail(null)}
+          onPause={estRepasseuse ? pause : undefined}
+          onReprendre={estRepasseuse ? reprendre : undefined}
         />
       )}
 
