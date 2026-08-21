@@ -102,4 +102,47 @@ describe('CarteCommande', () => {
     render(<CarteCommande commande={{ ...base, statut: 'fait' as const, client_mobile: true }} />);
     expect(screen.queryByText(/à appeler/i)).not.toBeInTheDocument();
   });
+  test('clic sur la carte → onOuvrir', async () => {
+    const onOuvrir = vi.fn();
+    render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} onOuvrir={onOuvrir} />);
+    await userEvent.click(screen.getByText(/Marie Dupont/));
+    expect(onOuvrir).toHaveBeenCalledWith(expect.objectContaining({ id_commande: 'c1' }));
+  });
+
+  test('clic sur « Pause » → n’ouvre PAS la modale', async () => {
+    const onOuvrir = vi.fn();
+    const onPause = vi.fn();
+    render(<CarteCommande
+      commande={{ ...base, statut: 'en_cours', repassage_debut: new Date().toISOString(), temps_repassage_s: 0 }}
+      onOuvrir={onOuvrir} onPause={onPause} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(onPause).toHaveBeenCalled();
+    expect(onOuvrir).not.toHaveBeenCalled();
+  });
+
+  test('clic sur « Modifier » → n’ouvre PAS la modale', async () => {
+    const onOuvrir = vi.fn();
+    const onModifier = vi.fn();
+    render(<CarteCommande commande={{ ...base, statut: 'a_faire' }}
+      onOuvrir={onOuvrir} onModifier={onModifier} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }));
+    expect(onModifier).toHaveBeenCalled();
+    expect(onOuvrir).not.toHaveBeenCalled();
+  });
+
+  test('clic sur le pavé des cintres → n’ouvre PAS la modale', async () => {
+    const onOuvrir = vi.fn();
+    const onCintres = vi.fn();
+    render(<CarteCommande
+      commande={{ ...base, statut: 'en_cours', repassage_debut: null, temps_repassage_s: 0, cintres_entr_nb: 2 }}
+      onOuvrir={onOuvrir} onCintresEntreprise={onCintres} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Augmenter cintres entreprise' }));
+    expect(onCintres).toHaveBeenCalledWith(expect.objectContaining({ id_commande: 'c1' }), 3);
+    expect(onOuvrir).not.toHaveBeenCalled();
+  });
+
+  test('sans onOuvrir → la carte n’est pas annoncée comme un bouton', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
 });
