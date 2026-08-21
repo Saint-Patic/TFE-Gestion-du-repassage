@@ -1018,3 +1018,42 @@ describe('GET /api/commandes — colonnes collectives (US #280)', () => {
     expect(sqlVue).toMatch(/c\.statut IN \('fait','recupere'\) OR c\.id_repasseuse = \$1/i);
   });
 });
+
+describe('GET /api/commandes — détail : repasseuse + emplacements', () => {
+  test('joint utilisateur en LEFT JOIN et agrège les emplacements en LATERAL', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(sqlVue).toMatch(/LEFT JOIN utilisateur u ON u\.id_utilisateur = c\.id_repasseuse/);
+    expect(sqlVue).toMatch(/LEFT JOIN LATERAL/);
+    expect(sqlVue).toMatch(/json_agg/);
+    expect(sqlVue).toMatch(/COALESCE\(empl\.emplacements, '\[\]'::json\)/);
+  });
+
+  test('ni les lignes ni l’ordre ne changent', async () => {
+    let sqlVue = '';
+    const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
+    await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(sqlVue).toMatch(/ORDER BY c\.prioritaire DESC,\s*c\.date_reception ASC/);
+    expect(sqlVue).toMatch(/CURRENT_DATE/);
+  });
+
+  test('retransmet repasseuse_nom et emplacements au client', async () => {
+    const ligne = {
+      id_commande: 'c1', id_client: UUID_CLIENT, statut: 'a_faire', nombre_mannes: 3,
+      prioritaire: false, cintres_client: false, cintres_entr_rendus: false,
+      date_reception: 'x', client_nom: 'Dupont', client_prenom: 'Marie',
+      repasseuse_nom: 'Repasseuse 1',
+      emplacements: [{ code_barre: 'A1G', nombre_mannes: 1 }, { code_barre: 'B2C', nombre_mannes: 2 }],
+    };
+    const app = creerApp({ query: async () => ({ rows: [ligne] }) });
+    const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
+    expect(res.status).toBe(200);
+    expect(res.body[0].repasseuse_nom).toBe('Repasseuse 1');
+    expect(res.body[0].emplacements).toEqual([
+      { code_barre: 'A1G', nombre_mannes: 1 },
+      { code_barre: 'B2C', nombre_mannes: 2 },
+    ]);
+  });
+});

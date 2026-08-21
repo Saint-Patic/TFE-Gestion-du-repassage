@@ -57,15 +57,27 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       // sur le nom vit dans le SQL et non dans React, pour n'avoir qu'un seul endroit à corriger —
       // CarteCommande et ses tests restent inchangés. client_mobile vaut alors NULL, et le badge
       // « à appeler » du #270 teste === false : une commande sans cliente n'en affiche donc aucun.
+      // repasseuse_nom et emplacements alimentent la vue détaillée d'une commande.
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
                 c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.cintres_entr_nb, c.date_reception, c.id_repasseuse,
                 c.repassage_debut, c.temps_repassage_s,
                 COALESCE(cl.nom, 'Cliente supprimée') AS client_nom,
                 COALESCE(cl.prenom, '') AS client_prenom,
-                (cl.telephone ~ '^04[0-9]{8}$') AS client_mobile
+                (cl.telephone ~ '^04[0-9]{8}$') AS client_mobile,
+                u.nom AS repasseuse_nom,
+                COALESCE(empl.emplacements, '[]'::json) AS emplacements
          FROM commande c
          LEFT JOIN client cl ON cl.id_client = c.id_client
+         LEFT JOIN utilisateur u ON u.id_utilisateur = c.id_repasseuse
+         LEFT JOIN LATERAL (
+           SELECT json_agg(json_build_object(
+                    'code_barre', e.code_barre, 'nombre_mannes', ce.nombre_mannes
+                  ) ORDER BY e.code_barre) AS emplacements
+           FROM commande_emplacement ce
+           JOIN emplacement e ON e.id_emplacement = ce.id_emplacement
+           WHERE ce.id_commande = c.id_commande
+         ) empl ON TRUE
          WHERE ( c.statut IN ('a_faire', 'en_cours', 'fait')
                  OR (c.statut = 'recupere' AND c.date_recuperation::date = CURRENT_DATE) )${filtreRepasseuse}
          ORDER BY c.prioritaire DESC, c.date_reception ASC`,
