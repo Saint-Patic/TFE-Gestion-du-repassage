@@ -43,11 +43,18 @@ export type Commande = {
   cintres_entr_nb?: number | null;
 };
 
+// Un emplacement occupé par une commande, avec le nombre de mannes qui s'y trouvent.
+export type EmplacementCommande = { code_barre: string; nombre_mannes: number };
+
 export type CommandeCarte = Commande & {
   client_nom: string;
   client_prenom: string;
   // Booléen calculé côté serveur : le numéro de la cliente ne transite pas jusqu'ici.
   client_mobile?: boolean;
+  // Nom de la repasseuse attitrée ; null si la commande n'en a pas.
+  repasseuse_nom?: string | null;
+  // Vide dès que les mannes ne sont plus sur les étagères (« en cours », « récupéré »).
+  emplacements?: EmplacementCommande[];
 };
 
 export type Emplacement = {
