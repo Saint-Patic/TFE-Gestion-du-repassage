@@ -201,8 +201,9 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
     if (erreur) return res.status(400).json({ message: erreur });
 
     const idRepasseuse = req.utilisateur.id_utilisateur;
-    const client = await pool.connect();
+    let client;
     try {
+      client = await pool.connect();
       await client.query('BEGIN');
 
       const cur = await client.query(
@@ -268,14 +269,14 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       diffuserMaj(maj.rows[0].id_repasseuse);
       return res.json(maj.rows[0]);
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (client) await client.query('ROLLBACK').catch(() => {});
       if (err.statut) return res.status(err.statut).json({ message: err.message });
       if (err.code === '23503') {
         return res.status(400).json({ message: 'Emplacement introuvable.' });
       }
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
-      client.release();
+      if (client) client.release();
     }
   });
 
@@ -283,8 +284,9 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
   // NON SCOPÉ à la repasseuse : la remise se fait au comptoir, par qui est disponible — une cliente
   // ne doit pas repartir sans son linge parce que la repasseuse qui l'a encodé est absente.
   routeur.post('/:id/recuperer', authentifier, exigerRole('repasseuse'), async (req, res) => {
-    const client = await pool.connect();
+    let client;
     try {
+      client = await pool.connect();
       await client.query('BEGIN');
 
       const cur = await client.query(
@@ -330,10 +332,10 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       diffuserMaj(maj.rows[0].id_repasseuse);
       return res.json(maj.rows[0]);
     } catch {
-      await client.query('ROLLBACK');
+      if (client) await client.query('ROLLBACK').catch(() => {});
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
-      client.release();
+      if (client) client.release();
     }
   });
 
@@ -410,8 +412,9 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
     const erreur = validerEmplacements(emplacements);
     if (erreur) return res.status(400).json({ message: erreur });
 
-    const client = await pool.connect();
+    let client;
     try {
+      client = await pool.connect();
       await client.query('BEGIN');
 
       const cmd = await client.query(
@@ -430,14 +433,14 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       await client.query('COMMIT');
       return res.status(201).json({ id_commande: req.params.id, emplacements });
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (client) await client.query('ROLLBACK').catch(() => {});
       if (err.statut) return res.status(err.statut).json({ message: err.message });
       if (err.code === '23503') {
         return res.status(400).json({ message: 'Emplacement introuvable.' });
       }
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
-      client.release();
+      if (client) client.release();
     }
   });
 

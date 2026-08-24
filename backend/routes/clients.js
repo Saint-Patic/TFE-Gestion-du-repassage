@@ -168,8 +168,9 @@ function creerRouteurClients(pool) {
   // La variable de connexion s'appelle `connexion` et non `client` comme ailleurs : ici `client`
   // désigne déjà le domaine métier, le contresens serait permanent.
   routeur.delete('/:id', authentifier, exigerRole('gerante'), async (req, res) => {
-    const connexion = await pool.connect();
+    let connexion;
     try {
+      connexion = await pool.connect();
       await connexion.query('BEGIN');
 
       // FOR UPDATE : ce verrou entre en conflit avec le FOR KEY SHARE que prend le contrôle de clé
@@ -209,10 +210,10 @@ function creerRouteurClients(pool) {
       await connexion.query('COMMIT');
       return res.json({ supprime: true, commandes_detachees: detachees.rowCount });
     } catch {
-      await connexion.query('ROLLBACK');
+      if (connexion) await connexion.query('ROLLBACK').catch(() => {});
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
-      connexion.release();
+      if (connexion) connexion.release();
     }
   });
 

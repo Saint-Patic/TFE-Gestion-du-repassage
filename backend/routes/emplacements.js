@@ -71,8 +71,9 @@ function creerRouteurEmplacements(pool) {
     const erreur = validerDeplacement({ id_source, id_destination, id_client });
     if (erreur) return res.status(400).json({ message: erreur });
 
-    const client = await pool.connect();
+    let client;
     try {
+      client = await pool.connect();
       await client.query('BEGIN');
 
       const lignes = await client.query(
@@ -132,13 +133,13 @@ function creerRouteurEmplacements(pool) {
       await client.query('COMMIT');
       return res.status(200).json({ id_source, id_destination, id_client, deplacees: lignes.rows });
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (client) await client.query('ROLLBACK').catch(() => {});
       if (err.code === '23503') {
         return res.status(400).json({ message: 'Emplacement introuvable.' });
       }
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
-      client.release();
+      if (client) client.release();
     }
   });
 
