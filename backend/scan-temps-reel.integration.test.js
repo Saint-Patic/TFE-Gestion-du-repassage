@@ -26,14 +26,14 @@ function jetonAutreRepasseuse() {
   });
 }
 
-// Faux pool transactionnel pour POST /commandes/demarrer, capturant les requêtes.
+// Faux pool transactionnel pour POST /commandes/:id/demarrer, capturant les requêtes.
 function fauxPoolDemarrer() {
   const appels = [];
   const client = {
     query: async (sql, params) => {
       appels.push({ sql, params });
       if (/^\s*(BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return {};
-      if (/FROM commande c[\s\S]*code_barre/i.test(sql)) return { rowCount: 1, rows: [{ id_commande: 'cmd1' }] };
+      if (/^\s*SELECT statut FROM commande/i.test(sql)) return { rowCount: 1, rows: [{ statut: 'a_faire' }] };
       if (/^\s*UPDATE commande/i.test(sql)) {
         return { rowCount: 1, rows: [{
           id_commande: 'cmd1', id_client: UUID_CLIENT, statut: 'en_cours', nombre_mannes: 3,
@@ -85,9 +85,8 @@ test('scan → écrit en DB (en_cours + historique) et diffuse commandes:maj re�
     // Laisser le join de room se faire, puis déclencher le scan.
     setTimeout(() => {
       request(app)
-        .post('/api/commandes/demarrer')
+        .post('/api/commandes/cmd1/demarrer')
         .set('Authorization', `Bearer ${jetonRepasseuse()}`)
-        .send({ code_barre: 'ABC' })
         .then((res) => { expect(res.status).toBe(200); })
         .catch((err) => { client.close(); done(err); });
     }, 60);
@@ -108,9 +107,8 @@ test('une AUTRE repasseuse reçoit aussi commandes:maj (colonnes collectives, US
 
     setTimeout(() => {
       request(app)
-        .post('/api/commandes/demarrer')
+        .post('/api/commandes/cmd1/demarrer')
         .set('Authorization', `Bearer ${jetonRepasseuse()}`)
-        .send({ code_barre: 'ABC' })
         .catch((err) => { autre.close(); done(err); });
     }, 60);
   });

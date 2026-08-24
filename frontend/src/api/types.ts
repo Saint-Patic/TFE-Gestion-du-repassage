@@ -57,6 +57,11 @@ export type CommandeCarte = Commande & {
   emplacements?: EmplacementCommande[];
 };
 
+// Une commande candidate au scan, avec l'action que le serveur en déduit.
+export type CommandeAScanner = CommandeCarte & {
+  action: 'demarrer' | 'cloturer' | 'recuperer';
+};
+
 export type Emplacement = {
   id_emplacement: string;
   code_barre: string;

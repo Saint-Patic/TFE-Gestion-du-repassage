@@ -1,5 +1,5 @@
 import { requeteApi } from './client';
-import type { Client, Commande, CommandeCarte } from './types';
+import type { Client, Commande, CommandeAScanner, CommandeCarte } from './types';
 
 // Recherche un client par son code-barres (encodage d'une réception).
 export function rechercherClientParCodeBarre(code: string): Promise<Client> {
@@ -62,11 +62,10 @@ export function definirCintresEntreprise(id: string, nb: number): Promise<Comman
   });
 }
 
-// Démarre le repassage de la 1ʳᵉ commande « à faire » du client scanné (→ en_cours).
-export function demarrerRepassage(codeBarre: string): Promise<Commande> {
-  return requeteApi<Commande>('/commandes/demarrer', {
+// Démarre le repassage d'une commande désignée (« à faire » → « en cours »).
+export function demarrerRepassage(idCommande: string): Promise<Commande> {
+  return requeteApi<Commande>(`/commandes/${encodeURIComponent(idCommande)}/demarrer`, {
     method: 'POST',
-    body: JSON.stringify({ code_barre: codeBarre }),
   });
 }
 
@@ -80,10 +79,8 @@ export function reprendreRepassage(id: string): Promise<Commande> {
   return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/reprendre`, { method: 'POST' });
 }
 
-// Résout l'action à effectuer pour un scan client : remettre, clôturer, ou démarrer.
-export function resoudreScan(
-  codeBarre: string
-): Promise<{ action: 'demarrer' | 'cloturer' | 'recuperer'; commande: CommandeCarte }> {
+// Résout un scan client : toutes les commandes candidates, chacune avec son action.
+export function resoudreScan(codeBarre: string): Promise<{ commandes: CommandeAScanner[] }> {
   return requeteApi(`/commandes/a-scanner/${encodeURIComponent(codeBarre)}`);
 }
 

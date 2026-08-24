@@ -6,11 +6,12 @@ import { listerEmplacements } from '../api/emplacements';
 import { obtenirSocket } from '../temps-reel/socket';
 import { useAuth } from '../auth/AuthContext';
 import { ErreurApi } from '../api/client';
-import type { Commande, CommandeCarte, Emplacement } from '../api/types';
+import type { Commande, CommandeAScanner, CommandeCarte, Emplacement } from '../api/types';
 import { CarteCommande } from '../composants/CarteCommande';
 import { ModaleModifierCommande } from '../composants/ModaleModifierCommande';
 import { ModaleConfirmation } from '../composants/ModaleConfirmation';
 import { ModaleDetailCommande } from '../composants/ModaleDetailCommande';
+import { ModaleChoixCommande } from '../composants/ModaleChoixCommande';
 import { PlacementMannes } from '../composants/PlacementMannes';
 
 const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
@@ -39,6 +40,7 @@ export function Tableau() {
   const detail = commandes.find((c) => c.id_commande === idDetail);
   const [aCloturer, setACloturer] = useState<Commande | null>(null);
   const [aRemettre, setARemettre] = useState<CommandeCarte | null>(null);
+  const [aChoisir, setAChoisir] = useState<CommandeAScanner[] | null>(null);
 
   // Préchargement des emplacements pour la modale de re-placement.
   useEffect(() => {
@@ -54,7 +56,22 @@ export function Tableau() {
     return () => { socket.off('commandes:maj', handler); };
   }, [queryClient]);
 
-  // Un seul champ de scan : le serveur déduit l'action. « En cours » d'abord, sinon « à faire ».
+  // Aiguillage sur l'action déduite par le serveur, appelé pour une candidate unique
+  // comme depuis la pop-up de choix.
+  async function executerAction(commande: CommandeAScanner) {
+    if (commande.action === 'demarrer') {
+      await demarrerRepassage(commande.id_commande);
+      return; // le Kanban se rafraîchit via le socket commandes:maj
+    }
+    if (commande.action === 'recuperer') {
+      // Confirmation obligatoire : « récupéré » est terminal, l'erreur ne se répare pas ici.
+      setARemettre(commande);
+      return;
+    }
+    setACloturer(commande); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
+  }
+
+  // Un seul champ de scan : le serveur déduit l'action. Plusieurs candidates → la repasseuse choisit.
   async function scanner(e: FormEvent) {
     e.preventDefault();
     const valeur = code.trim();
@@ -62,17 +79,12 @@ export function Tableau() {
     if (!valeur) return;
     setMessage(null);
     try {
-      const { action, commande } = await resoudreScan(valeur);
-      if (action === 'demarrer') {
-        await demarrerRepassage(valeur);
-        return; // le Kanban se rafraîchit via le socket commandes:maj
-      }
-      if (action === 'recuperer') {
-        // Confirmation obligatoire : « récupéré » est terminal, l'erreur ne se répare pas ici.
-        setARemettre(commande);
+      const { commandes: candidates } = await resoudreScan(valeur);
+      if (candidates.length === 1) {
+        await executerAction(candidates[0]);
         return;
       }
-      setACloturer(commande); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
+      setAChoisir(candidates);
     } catch (err) {
       if (err instanceof ErreurApi && err.statut === 404) {
         setMessage('Aucune commande active pour ce client.');
@@ -80,6 +92,12 @@ export function Tableau() {
         setMessage('Erreur lors du scan.');
       }
     }
+  }
+
+  // Le clavier de l'atelier est le scanner : sans ce focus, le scan suivant partirait dans le vide.
+  function fermerChoix() {
+    setAChoisir(null);
+    champScan.current?.focus();
   }
 
   // Écriture à la fin : la commande ne bascule qu'au « Terminer » du placement.
@@ -163,6 +181,17 @@ export function Tableau() {
           </div>
         ))}
       </div>
+
+      {aChoisir && (
+        <ModaleChoixCommande
+          commandes={aChoisir}
+          onChoisir={(c) => {
+            fermerChoix();
+            executerAction(c).catch(() => setMessage('Erreur lors du scan.'));
+          }}
+          onAnnuler={fermerChoix}
+        />
+      )}
 
       {aRemettre && (
         <ModaleConfirmation

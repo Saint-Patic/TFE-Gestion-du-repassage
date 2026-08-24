@@ -105,15 +105,15 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
            AND ( c.statut = 'fait'
               OR (c.statut IN ('en_cours','a_faire') AND c.id_repasseuse = $2) )
          ORDER BY (c.statut = 'fait') DESC, (c.statut = 'en_cours') DESC,
-                  c.prioritaire DESC, c.date_reception ASC
-         LIMIT 1`,
+                  c.prioritaire DESC, c.date_reception ASC`,
         [req.params.code_barre, req.utilisateur.id_utilisateur]
       );
       if (resultat.rowCount === 0) {
         return res.status(404).json({ message: 'Aucune commande active pour ce client.' });
       }
-      const commande = resultat.rows[0];
-      return res.json({ action: ACTIONS[commande.statut], commande });
+      // Toutes les candidates : le front n'affiche la pop-up de choix qu'à partir de deux.
+      const commandes = resultat.rows.map((c) => ({ ...c, action: ACTIONS[c.statut] }));
+      return res.json({ commandes });
     } catch {
       return res.status(500).json({ message: 'Erreur serveur.' });
     }
@@ -141,57 +141,54 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
     }
   });
 
-  // Démarre le repassage : scan du code-barres client → sa 1ʳᵉ commande « à faire » passe en_cours.
-  // Effets : timer (repassage_debut), mannes hors étagères, trace historique, diffusion. Repasseuse.
-  routeur.post('/demarrer', authentifier, exigerRole('repasseuse'), async (req, res) => {
-    const { code_barre } = req.body || {};
-    if (!code_barre || typeof code_barre !== 'string') {
-      return res.status(400).json({ message: 'code_barre est requis.' });
-    }
+  // Démarre le repassage d'une commande désignée : « à faire » → « en cours ».
+  // Effets : timer (repassage_debut), mannes hors étagères, trace historique, diffusion.
+  routeur.post('/:id/demarrer', authentifier, exigerRole('repasseuse'), async (req, res) => {
     const idRepasseuse = req.utilisateur.id_utilisateur;
-
-    const client = await pool.connect();
+    let client;
     try {
+      client = await pool.connect();
       await client.query('BEGIN');
 
-      const trouve = await client.query(
-        `SELECT c.id_commande
-         FROM commande c
-         JOIN client cl ON cl.id_client = c.id_client
-         WHERE cl.code_barre = $1 AND c.id_repasseuse = $2 AND c.statut = 'a_faire'
-         ORDER BY c.prioritaire DESC, c.date_reception ASC
-         LIMIT 1`,
-        [code_barre, idRepasseuse]
+      const cur = await client.query(
+        `SELECT statut FROM commande
+         WHERE id_commande = $1 AND id_repasseuse = $2
+         FOR UPDATE`,
+        [req.params.id, idRepasseuse]
       );
-      if (trouve.rowCount === 0) {
+      if (cur.rowCount === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ message: 'Aucune commande à faire pour ce client.' });
+        return res.status(404).json({ message: 'Commande introuvable.' });
       }
-      const idCommande = trouve.rows[0].id_commande;
+      // Garde de transition (#228) : couvre « déjà en cours » comme « déjà clôturée ».
+      if (!transitionValide(cur.rows[0].statut, 'en_cours')) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: "Cette commande n'est plus à faire." });
+      }
 
       const maj = await client.query(
         `UPDATE commande SET statut='en_cours', repassage_debut=now()
          WHERE id_commande=$1
          RETURNING id_commande, id_client, statut, nombre_mannes, prioritaire, cintres_client, cintres_entr_rendus, date_reception, id_repasseuse`,
-        [idCommande]
+        [req.params.id]
       );
 
-      await client.query('DELETE FROM commande_emplacement WHERE id_commande=$1', [idCommande]);
+      await client.query('DELETE FROM commande_emplacement WHERE id_commande=$1', [req.params.id]);
 
       await client.query(
         `INSERT INTO historique_statut (id_commande, ancien_statut, nouveau_statut, id_utilisateur)
          VALUES ($1, 'a_faire', 'en_cours', $2)`,
-        [idCommande, idRepasseuse]
+        [req.params.id, idRepasseuse]
       );
 
       await client.query('COMMIT');
       diffuserMaj(maj.rows[0].id_repasseuse);
       return res.status(200).json(maj.rows[0]);
-    } catch (err) {
-      await client.query('ROLLBACK');
+    } catch {
+      if (client) await client.query('ROLLBACK').catch(() => {});
       return res.status(500).json({ message: 'Erreur serveur.' });
     } finally {
-      client.release();
+      if (client) client.release();
     }
   });
 

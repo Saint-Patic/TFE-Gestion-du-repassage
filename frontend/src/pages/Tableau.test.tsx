@@ -58,8 +58,9 @@ beforeEach(() => {
   // Défaut « démarrer » : sans lui, le test existant de démarrage recevrait undefined
   // de resoudreScan et la déstructuration lèverait.
   vi.mocked(resoudreScan).mockReset().mockResolvedValue({
-    action: 'demarrer',
-    commande: { id_commande: 'c1', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 2 },
+    commandes: [
+      { id_commande: 'c1', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 2, action: 'demarrer' },
+    ],
   } as never);
   vi.mocked(cloturerRepassage).mockReset().mockResolvedValue(commandes[0] as never);
   vi.mocked(marquerRecuperee).mockReset().mockResolvedValue(commandes[0] as never);
@@ -67,11 +68,12 @@ beforeEach(() => {
 });
 
 const commandePrete = {
-  action: 'recuperer',
-  commande: {
-    id_commande: 'c9', id_client: 'cl1', statut: 'fait', nombre_mannes: 2,
-    client_nom: 'Dupont', client_prenom: 'Marie',
-  },
+  commandes: [
+    {
+      id_commande: 'c9', id_client: 'cl1', statut: 'fait', nombre_mannes: 2, action: 'recuperer',
+      client_nom: 'Dupont', client_prenom: 'Marie',
+    },
+  ],
 };
 
 describe('Tableau', () => {
@@ -98,7 +100,9 @@ describe('Tableau', () => {
     rendre();
     const champ = await screen.findByPlaceholderText('Scanner le client');
     await userEvent.type(champ, 'ABC123{enter}');
-    expect(demarrerRepassage).toHaveBeenCalledWith('ABC123');
+    expect(demarrerRepassage).toHaveBeenCalledWith('c1');
+    // Une seule candidate : pas de pop-up, le parcours courant ne gagne aucun geste.
+    expect(screen.queryByText(/commandes pour/i)).not.toBeInTheDocument();
   });
 
   test('gérante : pas de champ de scan', async () => {
@@ -110,8 +114,9 @@ describe('Tableau', () => {
 
   test('scan d’une commande en cours → phase de placement (US #260)', async () => {
     vi.mocked(resoudreScan).mockResolvedValue({
-      action: 'cloturer',
-      commande: { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2 },
+      commandes: [
+        { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer' },
+      ],
     } as never);
     rendre();
     const champ = await screen.findByPlaceholderText('Scanner le client');
@@ -152,8 +157,9 @@ describe('Tableau', () => {
 
   test('Annuler pendant la clôture revient au Kanban sans rien écrire (US #260)', async () => {
     vi.mocked(resoudreScan).mockResolvedValue({
-      action: 'cloturer',
-      commande: { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2 },
+      commandes: [
+        { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer' },
+      ],
     } as never);
     rendre();
     const champ = await screen.findByPlaceholderText('Scanner le client');
@@ -191,5 +197,59 @@ describe('Tableau', () => {
       expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reprendre' }))
         .toBeInTheDocument();
     });
+  });
+
+  const deuxCommandes = {
+    commandes: [
+      { id_commande: 'c9', id_client: 'cl1', statut: 'fait', nombre_mannes: 1, action: 'recuperer',
+        prioritaire: false, date_reception: '2026-08-21T09:00:00Z',
+        client_nom: 'Dupont', client_prenom: 'Marie' },
+      { id_commande: 'c8', id_client: 'cl1', statut: 'a_faire', nombre_mannes: 2, action: 'demarrer',
+        prioritaire: false, date_reception: '2026-08-24T09:00:00Z',
+        client_nom: 'Dupont', client_prenom: 'Marie' },
+    ],
+  };
+
+  test('deux commandes → pop-up de choix, sans rien écrire (2026-08-24)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(deuxCommandes as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    expect(await screen.findByText('2 commandes pour Marie Dupont')).toBeInTheDocument();
+    expect(demarrerRepassage).not.toHaveBeenCalled();
+    expect(marquerRecuperee).not.toHaveBeenCalled();
+  });
+
+  // Discriminant : asserter l'ARGUMENT. « la fonction a été appelée » passerait aussi
+  // avec l'ancienne route par code-barres, qui aurait démarré l'autre commande.
+  test('choisir la seconde ligne démarre CETTE commande (2026-08-24)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(deuxCommandes as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await userEvent.click(await screen.findByText('Démarrer'));
+    expect(demarrerRepassage).toHaveBeenCalledWith('c8');
+  });
+
+  test('choisir « Remettre » enchaîne sur la confirmation, sans écrire (2026-08-24)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(deuxCommandes as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await userEvent.click(await screen.findByText('Remettre'));
+    expect(await screen.findByText(/Remettre la commande de Marie Dupont/i)).toBeInTheDocument();
+    expect(marquerRecuperee).not.toHaveBeenCalled();
+  });
+
+  test('annuler le choix ferme la pop-up et rend le focus au champ (2026-08-24)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(deuxCommandes as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText('2 commandes pour Marie Dupont');
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(screen.queryByText('2 commandes pour Marie Dupont')).not.toBeInTheDocument();
+    expect(demarrerRepassage).not.toHaveBeenCalled();
+    expect(champ).toHaveFocus();
   });
 });
