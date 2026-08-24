@@ -46,4 +46,26 @@ describe('NouveauClient', () => {
 
     expect(imprimerEtiquette).toHaveBeenCalledWith(clientCree);
   });
+
+  test('« Ajouter un autre client » ramène un formulaire vide', async () => {
+    vi.mocked(creerClient).mockResolvedValue(clientCree);
+    vi.mocked(imprimerEtiquette).mockResolvedValue();
+    render(<NouveauClient />);
+
+    await userEvent.type(screen.getByPlaceholderText('Nom'), 'Dupont');
+    await userEvent.type(screen.getByPlaceholderText('Prénom'), 'Marie');
+    await userEvent.type(screen.getByPlaceholderText('Téléphone'), '0470');
+    await userEvent.click(screen.getByRole('button', { name: 'Créer' }));
+    await userEvent.click(await screen.findByRole('button', { name: /Imprimer/ }));
+    await screen.findByText('Étiquette imprimée.');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un autre client' }));
+
+    expect(screen.getByPlaceholderText('Nom')).toHaveValue('');
+    expect(screen.getByPlaceholderText('Téléphone')).toHaveValue('');
+    expect(screen.queryByText('K7QF2M9X')).not.toBeInTheDocument();
+    // L'état d'impression doit repartir de zéro, sinon la cliente suivante s'affiche
+    // comme déjà imprimée.
+    expect(screen.queryByText('Étiquette imprimée.')).not.toBeInTheDocument();
+  });
 });

@@ -26,6 +26,17 @@ export function NouveauClient() {
     }
   }
 
+  // Repart d'un formulaire vierge sans repasser par l'accueil.
+  function reinitialiser() {
+    setNom('');
+    setPrenom('');
+    setTelephone('');
+    setEmail('');
+    setErreur(null);
+    setClient(null);
+    setImpression('idle');
+  }
+
   async function imprimer() {
     if (!client) return;
     setImpression('encours');
@@ -54,6 +65,9 @@ export function NouveauClient() {
         {impression === 'erreur' && (
           <p className="text-red-700">Agent d'impression injoignable. Réessayez.</p>
         )}
+        <button className="mt-2 rounded border px-4 py-2" onClick={reinitialiser}>
+          Ajouter un autre client
+        </button>
       </div>
     );
   }
