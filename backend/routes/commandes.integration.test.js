@@ -779,6 +779,16 @@ describe('GET /api/commandes/a-scanner/:code_barre (US #260)', () => {
       .set('Authorization', `Bearer ${jetonRepasseuse()}`);
     expect(appels[0].sql).not.toMatch(/LIMIT 1/i);
   });
+
+  test('projette client_mobile, sans faire descendre le numéro (2026-08-25)', async () => {
+    const { pool, appels } = poolResolution([{ ...cmdEnCours, client_mobile: true }]);
+    const res = await request(creerApp(pool))
+      .get('/api/commandes/a-scanner/ABC')
+      .set('Authorization', `Bearer ${jetonRepasseuse()}`);
+    // Le booléen est calculé par PostgreSQL : c'est l'expression du #270, à l'identique.
+    expect(appels[0].sql).toContain("(cl.telephone ~ '^04[0-9]{8}$') AS client_mobile");
+    expect(res.body.commandes[0].client_mobile).toBe(true);
+  });
 });
 
 describe('POST /api/commandes/:id/cloturer (US #260)', () => {

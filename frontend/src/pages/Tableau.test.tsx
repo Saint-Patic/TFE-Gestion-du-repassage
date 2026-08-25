@@ -80,6 +80,22 @@ const commandePrete = {
   ],
 };
 
+const commandeEnCours = {
+  commandes: [
+    {
+      id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer',
+      client_nom: 'Dupont', client_prenom: 'Marie', client_mobile: true,
+    },
+  ],
+};
+
+// Un scan de clôture passe désormais par une confirmation (2026-08-25).
+async function scannerPuisConfirmer() {
+  const champ = await screen.findByPlaceholderText('Scanner le client');
+  await userEvent.type(champ, 'ABC123{enter}');
+  await userEvent.click(await screen.findByRole('button', { name: 'Terminer et replacer' }));
+}
+
 describe('Tableau', () => {
   test('affiche les 4 colonnes, dont « Récupéré » borné au jour', async () => {
     rendre();
@@ -116,17 +132,69 @@ describe('Tableau', () => {
     expect(screen.queryByPlaceholderText('Scanner le client')).not.toBeInTheDocument();
   });
 
-  test('scan d’une commande en cours → phase de placement (US #260)', async () => {
+  test('scan d’une commande en cours → confirmation avant le placement (2026-08-25)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandeEnCours as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    expect(await screen.findByText(/Un SMS la préviendra/i)).toBeInTheDocument();
+    // Le placement ne s'ouvre pas tant que la confirmation n'est pas donnée.
+    expect(screen.queryByText(/reste/i)).not.toBeInTheDocument();
+    expect(demarrerRepassage).not.toHaveBeenCalled();
+  });
+
+  test('confirmer ouvre la phase de placement (US #260)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandeEnCours as never);
+    rendre();
+    await scannerPuisConfirmer();
+    expect(await screen.findByText(/reste/i)).toBeInTheDocument();
+    expect(cloturerRepassage).not.toHaveBeenCalled();
+  });
+
+  // C'est le test qui porte la demande : annuler ne doit rien écrire du tout.
+  test('annuler la confirmation n’écrit rien et n’ouvre pas le placement (2026-08-25)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandeEnCours as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText(/Un SMS la préviendra/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(cloturerRepassage).not.toHaveBeenCalled();
+    expect(screen.queryByText(/reste/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Un SMS la préviendra/i)).not.toBeInTheDocument();
+  });
+
+  test('annuler la confirmation rend le focus au champ de scan (2026-08-25)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue(commandeEnCours as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText(/Un SMS la préviendra/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(champ).toHaveFocus();
+  });
+
+  test('cliente au fixe : la confirmation annonce un appel (2026-08-25)', async () => {
     vi.mocked(resoudreScan).mockResolvedValue({
-      commandes: [
-        { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer' },
-      ],
+      commandes: [{ ...commandeEnCours.commandes[0], client_mobile: false }],
     } as never);
     rendre();
     const champ = await screen.findByPlaceholderText('Scanner le client');
     await userEvent.type(champ, 'ABC123{enter}');
-    expect(await screen.findByText(/reste/i)).toBeInTheDocument();
-    expect(demarrerRepassage).not.toHaveBeenCalled();
+    expect(await screen.findByText(/cette cliente est à appeler/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Un SMS la préviendra/i)).not.toBeInTheDocument();
+  });
+
+  // Le test qui verrouille le « === true » : sans lui, un « !== false » passerait aussi,
+  // et un champ manquant promettrait un SMS fantôme (défaut S3 du #270).
+  test('client_mobile absent : on ne promet aucun SMS (2026-08-25)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue({
+      commandes: [{ ...commandeEnCours.commandes[0], client_mobile: undefined }],
+    } as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    expect(await screen.findByText(/cette cliente est à appeler/i)).toBeInTheDocument();
   });
 
   test('scan d’une commande prête → confirmation, sans rien écrire (US #280)', async () => {
@@ -160,14 +228,9 @@ describe('Tableau', () => {
   });
 
   test('Annuler pendant la clôture revient au Kanban sans rien écrire (US #260)', async () => {
-    vi.mocked(resoudreScan).mockResolvedValue({
-      commandes: [
-        { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer' },
-      ],
-    } as never);
+    vi.mocked(resoudreScan).mockResolvedValue(commandeEnCours as never);
     rendre();
-    const champ = await screen.findByPlaceholderText('Scanner le client');
-    await userEvent.type(champ, 'ABC123{enter}');
+    await scannerPuisConfirmer();
     await screen.findByText(/reste/i);
     await userEvent.click(screen.getByRole('button', { name: 'Annuler la clôture' }));
     expect(screen.queryByText(/reste/i)).not.toBeInTheDocument();
@@ -290,14 +353,9 @@ describe('Tableau', () => {
 
   // Pendant une clôture, la barre du haut n'existe pas : aucun autre panneau ne peut s'ouvrir.
   test('pendant une clôture, les boutons de panneau ont disparu (2026-08-25)', async () => {
-    vi.mocked(resoudreScan).mockResolvedValue({
-      commandes: [
-        { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer' },
-      ],
-    } as never);
+    vi.mocked(resoudreScan).mockResolvedValue(commandeEnCours as never);
     rendre();
-    const champ = await screen.findByPlaceholderText('Scanner le client');
-    await userEvent.type(champ, 'ABC123{enter}');
+    await scannerPuisConfirmer();
     await screen.findByText(/reste/i);
     expect(screen.queryByRole('button', { name: '+ Nouvelle réception' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Réorganiser' })).not.toBeInTheDocument();

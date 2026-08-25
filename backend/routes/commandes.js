@@ -93,12 +93,14 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
   // DOUBLE PÉRIMÈTRE : une commande « fait » est trouvée quelle que soit la repasseuse (la remise au
   // comptoir est collective), tandis que « en cours » et « à faire » restent limitées aux siennes.
   // Priorité : remettre d'abord (la cliente est devant vous), puis terminer, puis démarrer.
+  // client_mobile : booléen calculé côté serveur, le numéro ne descend pas au navigateur (#270).
   routeur.get('/a-scanner/:code_barre', authentifier, exigerRole('repasseuse'), async (req, res) => {
     try {
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes, c.prioritaire,
                 c.date_reception, c.id_repasseuse, c.temps_repassage_s, c.repassage_debut,
-                cl.nom AS client_nom, cl.prenom AS client_prenom
+                cl.nom AS client_nom, cl.prenom AS client_prenom,
+                (cl.telephone ~ '^04[0-9]{8}$') AS client_mobile
          FROM commande c
          JOIN client cl ON cl.id_client = c.id_client
          WHERE cl.code_barre = $1
