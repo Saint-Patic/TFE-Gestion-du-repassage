@@ -155,8 +155,10 @@ export function Tableau() {
   function cintres(c: CommandeCarte, nb: number) { definirCintresEntreprise(c.id_commande, nb).catch(() => {}); }
 
   return (
-    <div className="flex flex-col gap-3">
-      <h1 className="text-xl font-bold">Tableau des commandes</h1>
+    // Hauteur bornée seulement sans panneau : un panneau ouvert garde le défilement de page,
+    // sinon la réception se retrouverait coincée dans une zone étroite.
+    <div className={`flex flex-col gap-3 ${panneau === null ? 'h-full min-h-0' : ''}`}>
+      <h1 className="shrink-0 text-xl font-bold">Tableau des commandes</h1>
 
       {panneau === null && (
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -223,17 +225,21 @@ export function Tableau() {
         </div>
       )}
 
-      <div className="flex gap-4 overflow-x-auto">
+      {/* min-h-0 est indispensable : sans lui un enfant flex ne rétrécit pas sous la taille de
+          son contenu, et le défilement interne ne se déclencherait jamais. */}
+      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
         {COLONNES.map((col) => (
-          <div key={col.statut} className="flex min-w-[12rem] flex-col gap-2">
-            <h2 className="font-semibold">{col.titre}</h2>
-            {commandes.filter((c) => c.statut === col.statut).map((c) => (
-              <CarteCommande key={c.id_commande} commande={c} onModifier={setAModifier}
-                onOuvrir={(commande) => setIdDetail(commande.id_commande)}
-                onPause={estRepasseuse ? pause : undefined}
-                onReprendre={estRepasseuse ? reprendre : undefined}
-                onCintresEntreprise={estRepasseuse ? cintres : undefined} />
-            ))}
+          <div key={col.statut} className="flex min-h-0 min-w-[12rem] flex-col gap-2">
+            <h2 className="shrink-0 font-semibold">{col.titre}</h2>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+              {commandes.filter((c) => c.statut === col.statut).map((c) => (
+                <CarteCommande key={c.id_commande} commande={c} onModifier={setAModifier}
+                  onOuvrir={(commande) => setIdDetail(commande.id_commande)}
+                  onPause={estRepasseuse ? pause : undefined}
+                  onReprendre={estRepasseuse ? reprendre : undefined}
+                  onCintresEntreprise={estRepasseuse ? cintres : undefined} />
+              ))}
+            </div>
           </div>
         ))}
       </div>

@@ -5,8 +5,9 @@ import { useAuth } from '../auth/AuthContext';
 export function AppShell({ children }: { children: ReactNode }) {
   const { utilisateur, deconnexion } = useAuth();
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center justify-between bg-blue-600 px-4 py-3 text-white">
+    // h-dvh et non h-screen : 100vh ignore les barres de Safari iOS et ferait déborder la page.
+    <div className="flex h-dvh flex-col">
+      <header className="flex shrink-0 items-center justify-between bg-blue-600 px-4 py-3 text-white">
         <span className="font-bold">La Manne à Bulles</span>
         <div className="flex items-center gap-3">
           <span>{utilisateur?.nom}</span>
@@ -15,7 +16,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
       </header>
-      <main className="p-4">{children}</main>
+      <main className="min-h-0 flex-1 overflow-y-auto p-4">{children}</main>
     </div>
   );
 }
