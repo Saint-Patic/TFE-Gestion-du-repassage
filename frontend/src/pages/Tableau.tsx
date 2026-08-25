@@ -50,7 +50,6 @@ export function Tableau() {
   const [panneau, setPanneau] = useState<Panneau>(null);
   const [aRemettre, setARemettre] = useState<CommandeCarte | null>(null);
   const [aChoisir, setAChoisir] = useState<CommandeAScanner[] | null>(null);
-  const [aCloturer, setACloturer] = useState<CommandeAScanner | null>(null);
 
   // Préchargement des emplacements pour la modale de re-placement.
   useEffect(() => {
@@ -78,8 +77,7 @@ export function Tableau() {
       setARemettre(commande);
       return;
     }
-    // Confirmation d'abord : « en cours → fait » est irréversible et déclenche le SMS.
-    setACloturer(commande);
+    setPanneau({ type: 'cloture', commande }); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
   }
 
   // Le champ est démonté pendant qu'un panneau est ouvert : le focus ne peut être posé
@@ -114,19 +112,6 @@ export function Tableau() {
   // Le clavier de l'atelier est le scanner : sans ce focus, le scan suivant partirait dans le vide.
   function fermerChoix() {
     setAChoisir(null);
-    champScan.current?.focus();
-  }
-
-  // Confirmée : on ouvre le placement. Toujours aucune écriture — elle a lieu au « Terminer ».
-  function confirmerCloture() {
-    if (!aCloturer) return;
-    setPanneau({ type: 'cloture', commande: aCloturer });
-    setACloturer(null);
-  }
-
-  // Le clavier de l'atelier est le scanner : sans ce focus, le scan suivant partirait dans le vide.
-  function annulerCloture() {
-    setACloturer(null);
     champScan.current?.focus();
   }
 
@@ -261,21 +246,6 @@ export function Tableau() {
             executerAction(c).catch(() => setMessage('Erreur lors du scan.'));
           }}
           onAnnuler={fermerChoix}
-        />
-      )}
-
-      {aCloturer && (
-        <ModaleConfirmation
-          titre="Fin du repassage"
-          message={
-            // « === true » et non « !== false » : on ne promet un SMS que si on en est certain.
-            aCloturer.client_mobile === true
-              ? `Terminer le repassage de ${aCloturer.client_prenom} ${aCloturer.client_nom} ? Un SMS la préviendra une fois les mannes replacées.`
-              : `Terminer le repassage de ${aCloturer.client_prenom} ${aCloturer.client_nom} ? Aucun SMS : cette cliente est à appeler.`
-          }
-          libelleAction="Terminer et replacer"
-          onConfirmer={confirmerCloture}
-          onAnnuler={annulerCloture}
         />
       )}
 
