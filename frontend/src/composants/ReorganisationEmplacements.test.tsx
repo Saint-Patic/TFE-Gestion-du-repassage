@@ -8,7 +8,7 @@ vi.mock('../api/emplacements', () => ({
   deplacerEmplacement: vi.fn(),
 }));
 
-import { Reorganisation } from './Reorganisation';
+import { ReorganisationEmplacements } from './ReorganisationEmplacements';
 import { listerEmplacements, contenuEmplacement, deplacerEmplacement } from '../api/emplacements';
 
 const A1G = { id_emplacement: 'e1', code_barre: 'A1G', etagere: 'A', niveau: 1, position: 'gauche', est_au_sol: false, id_client_occupant: 'cl1' };
@@ -22,12 +22,12 @@ beforeEach(() => {
   vi.mocked(deplacerEmplacement).mockReset().mockResolvedValue(undefined);
 });
 
-describe('Reorganisation', () => {
+describe('ReorganisationEmplacements', () => {
   test('source étagère → destination : deplacerEmplacement avec le client déduit', async () => {
     vi.mocked(contenuEmplacement).mockResolvedValue([
       { id_commande: 'cmd1', nombre_mannes: 2, statut: 'a_faire', id_client: 'cl1', client_nom: 'Dupont', client_prenom: 'Marie' },
     ]);
-    render(<Reorganisation />);
+    render(<ReorganisationEmplacements onFermer={() => {}} />);
     await userEvent.type(await screen.findByLabelText(/source/i), 'A1G{enter}');
     await userEvent.type(await screen.findByLabelText(/destination/i), 'C2D{enter}');
     await userEvent.click(await screen.findByRole('button', { name: /Déplacer vers C2D/ }));
@@ -39,7 +39,7 @@ describe('Reorganisation', () => {
       { id_commande: 'cmd1', nombre_mannes: 1, statut: 'a_faire', id_client: 'cl1', client_nom: 'Dupont', client_prenom: 'Marie' },
       { id_commande: 'cmd2', nombre_mannes: 2, statut: 'fait', id_client: 'cl2', client_nom: 'Martin', client_prenom: 'Jean' },
     ]);
-    render(<Reorganisation />);
+    render(<ReorganisationEmplacements onFermer={() => {}} />);
     await screen.findByLabelText(/source/i);
     await userEvent.click(screen.getByRole('button', { name: 'Depuis le sol' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Marie Dupont' }));
@@ -52,7 +52,7 @@ describe('Reorganisation', () => {
     vi.mocked(contenuEmplacement).mockResolvedValue([
       { id_commande: 'cmd1', nombre_mannes: 2, statut: 'a_faire', id_client: 'cl1', client_nom: 'Dupont', client_prenom: 'Marie' },
     ]);
-    render(<Reorganisation />);
+    render(<ReorganisationEmplacements onFermer={() => {}} />);
     await userEvent.type(await screen.findByLabelText(/source/i), 'A1G{enter}');
     await userEvent.type(await screen.findByLabelText(/destination/i), 'D1G{enter}');
     expect(await screen.findByText(/autre client/)).toBeInTheDocument();
@@ -64,10 +64,18 @@ describe('Reorganisation', () => {
     vi.mocked(contenuEmplacement).mockResolvedValue([
       { id_commande: 'cmd1', nombre_mannes: 2, statut: 'a_faire', id_client: 'cl1', client_nom: 'Dupont', client_prenom: 'Marie' },
     ]);
-    render(<Reorganisation />);
+    render(<ReorganisationEmplacements onFermer={() => {}} />);
     await userEvent.type(await screen.findByLabelText(/source/i), 'A1G{enter}');
     await userEvent.type(await screen.findByLabelText(/destination/i), 'A1G{enter}');
     expect(await screen.findByText(/identiques/)).toBeInTheDocument();
+    expect(deplacerEmplacement).not.toHaveBeenCalled();
+  });
+
+  test('« Fermer » rend la main sans rien déplacer (2026-08-25)', async () => {
+    const onFermer = vi.fn();
+    render(<ReorganisationEmplacements onFermer={onFermer} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Fermer' }));
+    expect(onFermer).toHaveBeenCalled();
     expect(deplacerEmplacement).not.toHaveBeenCalled();
   });
 });

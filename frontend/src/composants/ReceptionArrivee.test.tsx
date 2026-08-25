@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('../api/commandes', () => ({
@@ -11,7 +11,7 @@ vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
 }));
 
-import { Encodage } from './Encodage';
+import { ReceptionArrivee } from './ReceptionArrivee';
 import { rechercherClientParCodeBarre, creerCommande, placerEmplacements } from '../api/commandes';
 import { listerEmplacements } from '../api/emplacements';
 import { ErreurApi } from '../api/client';
@@ -33,7 +33,7 @@ async function allerEnPlacement(mannes: number) {
     nombre_mannes: mannes, prioritaire: false,
     cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
   });
-  render(<Encodage />);
+  render(<ReceptionArrivee onFermer={() => {}} />);
   await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
   const champMannes = await screen.findByLabelText('Nombre de mannes');
   await userEvent.clear(champMannes);
@@ -49,10 +49,10 @@ beforeEach(() => {
   vi.mocked(listerEmplacements).mockResolvedValue(emplacements);
 });
 
-describe('Encodage — réception (US #150)', () => {
+describe('ReceptionArrivee — réception (US #150)', () => {
   test('scan d’un code connu → affiche le client', async () => {
     vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
     expect(await screen.findByText('Marie Dupont')).toBeInTheDocument();
   });
@@ -64,7 +64,7 @@ describe('Encodage — réception (US #150)', () => {
       nombre_mannes: 2, prioritaire: false,
       cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
     });
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
     const champMannes = await screen.findByLabelText('Nombre de mannes');
     await userEvent.clear(champMannes);
@@ -83,7 +83,7 @@ describe('Encodage — réception (US #150)', () => {
       nombre_mannes: 1, prioritaire: true,
       cintres_client: true, cintres_entr_rendus: true, date_reception: 'x',
     });
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
     await screen.findByLabelText('Nombre de mannes');
     await userEvent.click(screen.getByLabelText('Prioritaire'));
@@ -101,7 +101,7 @@ describe('Encodage — réception (US #150)', () => {
   // comptables sans frappe — soit en rescannant, soit au pavé tactile (#340).
   test('rescanner la même cliente incrémente le nombre de mannes', async () => {
     vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     const champ = screen.getByPlaceholderText('Code-barres');
     await userEvent.type(champ, 'K7QF2M9X{enter}');
     const champMannes = await screen.findByLabelText('Nombre de mannes');
@@ -121,7 +121,7 @@ describe('Encodage — réception (US #150)', () => {
     vi.mocked(rechercherClientParCodeBarre).mockImplementation(async (code: string) =>
       code === 'ZZZZ1111' ? autre : client
     );
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     const champ = screen.getByPlaceholderText('Code-barres');
     await userEvent.type(champ, 'K7QF2M9X{enter}');
     await screen.findByLabelText('Nombre de mannes');
@@ -140,7 +140,7 @@ describe('Encodage — réception (US #150)', () => {
       nombre_mannes: 3, prioritaire: false,
       cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
     });
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
     await screen.findByLabelText('Nombre de mannes');
     const plus = screen.getByLabelText('Augmenter nombre de mannes');
@@ -157,7 +157,7 @@ describe('Encodage — réception (US #150)', () => {
   // doit pas être perdu parce que le focus est resté sur le bouton.
   test('après un appui sur +, le focus revient au champ de scan', async () => {
     vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
     await screen.findByLabelText('Nombre de mannes');
     await userEvent.click(screen.getByLabelText('Augmenter nombre de mannes'));
@@ -168,13 +168,13 @@ describe('Encodage — réception (US #150)', () => {
     vi.mocked(rechercherClientParCodeBarre).mockRejectedValue(
       new ErreurApi(404, { message: 'Client inconnu.' })
     );
-    render(<Encodage />);
+    render(<ReceptionArrivee onFermer={() => {}} />);
     await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'ZZZ{enter}');
     expect(await screen.findByText(/Client inconnu/)).toBeInTheDocument();
   });
 });
 
-describe('Encodage — placement (US #160)', () => {
+describe('ReceptionArrivee — placement (US #160)', () => {
   test('scanner N emplacements décrémente le reste puis active Terminer', async () => {
     await allerEnPlacement(2);
     expect(await screen.findByText(/reste 2/)).toBeInTheDocument();
@@ -204,5 +204,31 @@ describe('Encodage — placement (US #160)', () => {
     expect(await screen.findByText(/reste 1/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Annuler le dernier scan/ }));
     expect(await screen.findByText(/reste 2/)).toBeInTheDocument();
+  });
+});
+
+describe('ReceptionArrivee — panneau (2026-08-25)', () => {
+  test('« Annuler » ferme sans rien écrire', async () => {
+    const onFermer = vi.fn();
+    render(<ReceptionArrivee onFermer={onFermer} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }));
+    expect(onFermer).toHaveBeenCalled();
+    expect(creerCommande).not.toHaveBeenCalled();
+  });
+
+  test('le placement terminé referme le panneau', async () => {
+    const onFermer = vi.fn();
+    vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
+    vi.mocked(creerCommande).mockResolvedValue({
+      id_commande: 'cmd1', id_client: 'abc', statut: 'a_faire', nombre_mannes: 1,
+      prioritaire: false, cintres_client: false, cintres_entr_rendus: false, date_reception: 'x',
+    });
+    vi.mocked(placerEmplacements).mockResolvedValue(undefined as never);
+    render(<ReceptionArrivee onFermer={onFermer} />);
+    await userEvent.type(screen.getByPlaceholderText('Code-barres'), 'K7QF2M9X{enter}');
+    await userEvent.click(await screen.findByRole('button', { name: /Valider la réception/ }));
+    await userEvent.type(await screen.findByPlaceholderText('Code emplacement'), 'A1G{enter}');
+    await userEvent.click(await screen.findByRole('button', { name: /Terminer/ }));
+    await waitFor(() => expect(onFermer).toHaveBeenCalled());
   });
 });

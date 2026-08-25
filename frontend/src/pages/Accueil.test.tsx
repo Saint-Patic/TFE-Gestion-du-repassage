@@ -24,16 +24,6 @@ describe('Accueil — liens clients selon le rôle', () => {
     expect(screen.queryByText('Gérer les clients')).not.toBeInTheDocument();
   });
 
-  test('repasseuse → voit le lien Réorganiser', () => {
-    rendreAvecRole('repasseuse');
-    expect(screen.getByText('Réorganiser les emplacements')).toBeInTheDocument();
-  });
-
-  test('gérante → ne voit pas le lien Réorganiser', () => {
-    rendreAvecRole('gerante');
-    expect(screen.queryByText('Réorganiser les emplacements')).not.toBeInTheDocument();
-  });
-
   test('gérante → voit le lien Statistiques (US #300)', () => {
     rendreAvecRole('gerante');
     expect(screen.getByText('Statistiques')).toBeInTheDocument();
@@ -42,5 +32,17 @@ describe('Accueil — liens clients selon le rôle', () => {
   test('repasseuse → ne voit pas le lien Statistiques (US #300)', () => {
     rendreAvecRole('repasseuse');
     expect(screen.queryByText('Statistiques')).not.toBeInTheDocument();
+  });
+
+  test('repasseuse → redirigée vers le tableau, aucun menu (2026-08-25)', () => {
+    rendreAvecRole('repasseuse');
+    expect(screen.queryByText('Accueil')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tableau des commandes')).not.toBeInTheDocument();
+  });
+
+  test('gérante → garde son accueil (2026-08-25)', () => {
+    rendreAvecRole('gerante');
+    expect(screen.getByText('Accueil')).toBeInTheDocument();
+    expect(screen.getByText('Tableau des commandes')).toBeInTheDocument();
   });
 });

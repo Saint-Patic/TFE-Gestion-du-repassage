@@ -4,12 +4,14 @@ import { rechercherClientParCodeBarre, creerCommande, placerEmplacements } from 
 import { listerEmplacements } from '../api/emplacements';
 import { ErreurApi } from '../api/client';
 import type { Client, Emplacement } from '../api/types';
-import { PlacementMannes } from '../composants/PlacementMannes';
-import { ChampNombre } from '../composants/ChampNombre';
+import { PlacementMannes } from './PlacementMannes';
+import { ChampNombre } from './ChampNombre';
 
 type Phase = 'reception' | 'placement';
 
-export function Encodage() {
+type Props = { onFermer: () => void };
+
+export function ReceptionArrivee({ onFermer }: Props) {
   const [phase, setPhase] = useState<Phase>('reception');
   const [code, setCode] = useState('');
   const [client, setClient] = useState<Client | null>(null);
@@ -18,7 +20,6 @@ export function Encodage() {
   const [cintresClient, setCintresClient] = useState(false);
   const [cintresEntrRendus, setCintresEntrRendus] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [succes, setSucces] = useState<string | null>(null);
 
   const [emplacements, setEmplacements] = useState<Emplacement[]>([]);
   const [commande, setCommande] = useState<{ id_commande: string; nombre_mannes: number } | null>(null);
@@ -44,7 +45,6 @@ export function Encodage() {
   async function rechercher(e: FormEvent) {
     e.preventDefault();
     setErreur(null);
-    setSucces(null);
     const scanne = code.trim().toUpperCase();
     // Vidé systématiquement : sans cela, un second scan s'ajouterait au premier et
     // produirait un code invalide.
@@ -102,18 +102,7 @@ export function Encodage() {
     setErreur(null);
     try {
       await placerEmplacements(commande.id_commande, lignes);
-      setSucces(
-        `Réception localisée : ${client?.prenom} ${client?.nom} — ${commande.nombre_mannes} manne(s).`
-      );
-      // Réinitialisation complète vers la réception.
-      setPhase('reception');
-      setCommande(null);
-      setClient(null);
-      setCode('');
-      setMannes(1);
-      setPrioritaire(false);
-      setCintresClient(false);
-      setCintresEntrRendus(false);
+      onFermer();
     } catch {
       setErreur('Impossible d’enregistrer les emplacements.');
     }
@@ -121,9 +110,8 @@ export function Encodage() {
 
   return (
     <div className="flex max-w-sm flex-col gap-4">
-      <h1 className="text-xl font-bold">Encodage / Réception</h1>
+      <h2 className="text-lg font-semibold">Nouvelle réception</h2>
 
-      {succes && <p className="text-green-700">{succes}</p>}
       {erreur && <p className="text-red-700">{erreur}</p>}
 
       {phase === 'reception' && (
@@ -140,6 +128,10 @@ export function Encodage() {
               autoFocus
             />
           </form>
+
+          <button type="button" className="self-start underline" onClick={onFermer}>
+            Annuler
+          </button>
 
           {client && (
             <form onSubmit={validerReception} className="flex flex-col gap-2 rounded border p-3">

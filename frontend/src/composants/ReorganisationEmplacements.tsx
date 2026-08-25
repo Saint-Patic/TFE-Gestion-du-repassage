@@ -11,7 +11,9 @@ function etiquette(emp: Emplacement) {
   return emp.est_au_sol ? 'Au sol' : emp.code_barre;
 }
 
-export function Reorganisation() {
+type Props = { onFermer: () => void };
+
+export function ReorganisationEmplacements({ onFermer }: Props) {
   const [emplacements, setEmplacements] = useState<Emplacement[]>([]);
   const [phase, setPhase] = useState<Phase>('source');
   const [source, setSource] = useState<Emplacement | null>(null);
@@ -156,7 +158,10 @@ export function Reorganisation() {
 
   return (
     <div className="flex max-w-sm flex-col gap-4">
-      <h1 className="text-xl font-bold">Réorganiser les emplacements</h1>
+      <h2 className="text-lg font-semibold">Réorganiser les emplacements</h2>
+      <button type="button" className="self-start underline" onClick={onFermer}>
+        Fermer
+      </button>
       {succes && <p className="text-green-700">{succes}</p>}
       {erreur && <p className="text-red-700">{erreur}</p>}
 

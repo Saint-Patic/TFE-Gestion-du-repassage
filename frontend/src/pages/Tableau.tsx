@@ -13,6 +13,8 @@ import { ModaleConfirmation } from '../composants/ModaleConfirmation';
 import { ModaleDetailCommande } from '../composants/ModaleDetailCommande';
 import { ModaleChoixCommande } from '../composants/ModaleChoixCommande';
 import { PlacementMannes } from '../composants/PlacementMannes';
+import { ReceptionArrivee } from '../composants/ReceptionArrivee';
+import { ReorganisationEmplacements } from '../composants/ReorganisationEmplacements';
 
 const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
   { statut: 'a_faire', titre: 'À faire' },
@@ -23,6 +25,13 @@ const COLONNES: { statut: CommandeCarte['statut']; titre: string }[] = [
   // remises de la veille à minuit passerait pour une perte de données.
   { statut: 'recupere', titre: 'Récupéré (aujourd’hui)' },
 ];
+
+// Un seul panneau à la fois : le typage interdit que deux cibles de scan coexistent.
+type Panneau =
+  | { type: 'cloture'; commande: Commande }
+  | { type: 'reception' }
+  | { type: 'reorganisation' }
+  | null;
 
 export function Tableau() {
   const queryClient = useQueryClient();
@@ -38,7 +47,7 @@ export function Tableau() {
   const [message, setMessage] = useState<string | null>(null);
   const champScan = useRef<HTMLInputElement>(null);
   const detail = commandes.find((c) => c.id_commande === idDetail);
-  const [aCloturer, setACloturer] = useState<Commande | null>(null);
+  const [panneau, setPanneau] = useState<Panneau>(null);
   const [aRemettre, setARemettre] = useState<CommandeCarte | null>(null);
   const [aChoisir, setAChoisir] = useState<CommandeAScanner[] | null>(null);
 
@@ -68,8 +77,14 @@ export function Tableau() {
       setARemettre(commande);
       return;
     }
-    setACloturer(commande); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
+    setPanneau({ type: 'cloture', commande }); // enchaîne sur le placement ; rien n'est écrit avant « Terminer »
   }
+
+  // Le champ est démonté pendant qu'un panneau est ouvert : le focus ne peut être posé
+  // qu'après son remontage, donc dans un effet et non au moment du clic.
+  useEffect(() => {
+    if (panneau === null) champScan.current?.focus();
+  }, [panneau]);
 
   // Un seul champ de scan : le serveur déduit l'action. Plusieurs candidates → la repasseuse choisit.
   async function scanner(e: FormEvent) {
@@ -102,18 +117,24 @@ export function Tableau() {
 
   // Écriture à la fin : la commande ne bascule qu'au « Terminer » du placement.
   async function terminerCloture(lignes: { id_emplacement: string; nombre_mannes: number }[]) {
-    if (!aCloturer) return;
+    if (panneau?.type !== 'cloture') return;
     try {
-      await cloturerRepassage(aCloturer.id_commande, lignes);
-      setACloturer(null);
+      await cloturerRepassage(panneau.commande.id_commande, lignes);
+      setPanneau(null);
     } catch (err) {
-      setACloturer(null);
+      setPanneau(null);
       setMessage(
         err instanceof ErreurApi && err.statut === 409
           ? "Cette commande n'est plus en cours."
           : 'Erreur lors de la clôture.'
       );
     }
+  }
+
+  // Ferme le panneau courant et rafraîchit le tableau derrière.
+  function fermerPanneau() {
+    setPanneau(null);
+    queryClient.invalidateQueries({ queryKey: ['commandes'] });
   }
 
   async function confirmerRemise() {
@@ -137,33 +158,68 @@ export function Tableau() {
     <div className="flex flex-col gap-3">
       <h1 className="text-xl font-bold">Tableau des commandes</h1>
 
-      {estRepasseuse && !aCloturer && (
-        <form onSubmit={scanner} className="flex flex-col gap-1">
-          <label htmlFor="scan-repassage" className="font-semibold">Scanner un client</label>
-          <input
-            id="scan-repassage"
-            ref={champScan}
-            className="max-w-xs rounded border p-2"
-            placeholder="Scanner le client"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-          {message && <p className="text-red-700">{message}</p>}
-        </form>
+      {panneau === null && (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            {estRepasseuse && (
+              <form onSubmit={scanner} className="flex flex-col gap-1">
+                <label htmlFor="scan-repassage" className="font-semibold">Scanner un client</label>
+                <input
+                  id="scan-repassage"
+                  ref={champScan}
+                  className="max-w-xs rounded border p-2"
+                  placeholder="Scanner le client"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                />
+              </form>
+            )}
+            <button
+              type="button"
+              className="rounded bg-blue-600 px-4 py-2 text-white"
+              onClick={() => setPanneau({ type: 'reception' })}
+            >
+              + Nouvelle réception
+            </button>
+          </div>
+          {estRepasseuse && (
+            <button
+              type="button"
+              className="rounded border px-4 py-2"
+              onClick={() => setPanneau({ type: 'reorganisation' })}
+            >
+              Réorganiser
+            </button>
+          )}
+        </div>
       )}
 
-      {aCloturer && (
+      {message && <p className="text-red-700">{message}</p>}
+
+      {panneau?.type === 'cloture' && (
         <div className="flex flex-col gap-2 rounded border p-3">
           <h2 className="font-semibold">Clôture : replacer les mannes</h2>
           <PlacementMannes
-            nombreMannes={aCloturer.nombre_mannes}
+            nombreMannes={panneau.commande.nombre_mannes}
             emplacements={emplacements}
-            idClient={aCloturer.id_client}
+            idClient={panneau.commande.id_client}
             onTerminer={terminerCloture}
           />
-          <button type="button" className="self-start underline" onClick={() => setACloturer(null)}>
+          <button type="button" className="self-start underline" onClick={() => setPanneau(null)}>
             Annuler la clôture
           </button>
+        </div>
+      )}
+
+      {panneau?.type === 'reception' && (
+        <div className="flex flex-col gap-2 rounded border p-3">
+          <ReceptionArrivee onFermer={fermerPanneau} />
+        </div>
+      )}
+
+      {panneau?.type === 'reorganisation' && (
+        <div className="flex flex-col gap-2 rounded border p-3">
+          <ReorganisationEmplacements onFermer={fermerPanneau} />
         </div>
       )}
 

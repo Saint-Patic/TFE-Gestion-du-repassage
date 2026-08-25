@@ -14,9 +14,13 @@ vi.mock('../api/commandes', () => ({
   resoudreScan: vi.fn(),
   cloturerRepassage: vi.fn(),
   marquerRecuperee: vi.fn(),
+  rechercherClientParCodeBarre: vi.fn(),
+  creerCommande: vi.fn(),
 }));
 vi.mock('../api/emplacements', () => ({
   listerEmplacements: vi.fn(),
+  contenuEmplacement: vi.fn(),
+  deplacerEmplacement: vi.fn(),
 }));
 vi.mock('../auth/AuthContext', () => ({ useAuth: vi.fn() }));
 
@@ -251,5 +255,51 @@ describe('Tableau', () => {
     expect(screen.queryByText('2 commandes pour Marie Dupont')).not.toBeInTheDocument();
     expect(demarrerRepassage).not.toHaveBeenCalled();
     expect(champ).toHaveFocus();
+  });
+
+  // Le test qui porte la décision fondatrice : jamais deux cibles de scan actives.
+  test('ouvrir la réception fait disparaître le champ de scan (2026-08-25)', async () => {
+    rendre();
+    await userEvent.click(await screen.findByRole('button', { name: '+ Nouvelle réception' }));
+    expect(await screen.findByText('Nouvelle réception')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Scanner le client')).not.toBeInTheDocument();
+  });
+
+  test('fermer la réception ramène le champ de scan et son focus (2026-08-25)', async () => {
+    rendre();
+    await userEvent.click(await screen.findByRole('button', { name: '+ Nouvelle réception' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }));
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    expect(champ).toHaveFocus();
+  });
+
+  test('repasseuse : ouvrir la réorganisation fait disparaître le champ de scan (2026-08-25)', async () => {
+    rendre();
+    await userEvent.click(await screen.findByRole('button', { name: 'Réorganiser' }));
+    expect(await screen.findByText('Réorganiser les emplacements')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Scanner le client')).not.toBeInTheDocument();
+  });
+
+  test('gérante : réception oui, champ de scan et réorganisation non (2026-08-25)', async () => {
+    connecte('gerante');
+    rendre();
+    expect(await screen.findByRole('button', { name: '+ Nouvelle réception' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Scanner le client')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Réorganiser' })).not.toBeInTheDocument();
+  });
+
+  // Pendant une clôture, la barre du haut n'existe pas : aucun autre panneau ne peut s'ouvrir.
+  test('pendant une clôture, les boutons de panneau ont disparu (2026-08-25)', async () => {
+    vi.mocked(resoudreScan).mockResolvedValue({
+      commandes: [
+        { id_commande: 'c9', id_client: 'cl1', statut: 'en_cours', nombre_mannes: 2, action: 'cloturer' },
+      ],
+    } as never);
+    rendre();
+    const champ = await screen.findByPlaceholderText('Scanner le client');
+    await userEvent.type(champ, 'ABC123{enter}');
+    await screen.findByText(/reste/i);
+    expect(screen.queryByRole('button', { name: '+ Nouvelle réception' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Réorganiser' })).not.toBeInTheDocument();
   });
 });
