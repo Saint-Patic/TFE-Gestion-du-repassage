@@ -43,7 +43,7 @@ beforeEach(async () => {
   await semerUtilisateurs(pool);
 });
 
-describe('Scan d’une cliente ayant plusieurs commandes — base réelle', () => {
+describe('Scan d’un client ayant plusieurs commandes — base réelle', () => {
   test('une commande « fait » (autre repasseuse) + une « à faire » → 2 lignes, « fait » en tête', async () => {
     const idClient = await semerClient(pool, { code_barre: 'CLIENT01' });
     // Le « fait » appartient à l'AUTRE repasseuse : il doit remonter quand même (périmètre

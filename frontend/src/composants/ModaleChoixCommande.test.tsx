@@ -16,7 +16,7 @@ const commandes = [
 ];
 
 describe('ModaleChoixCommande', () => {
-  test('titre nommant la cliente et le nombre de commandes', () => {
+  test('titre nommant le client et le nombre de commandes', () => {
     render(<ModaleChoixCommande commandes={commandes} onChoisir={vi.fn()} onAnnuler={vi.fn()} />);
     expect(screen.getByText('2 commandes pour Marie Dupont')).toBeInTheDocument();
   });

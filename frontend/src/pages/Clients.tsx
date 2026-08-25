@@ -52,8 +52,8 @@ export function Clients() {
       const { commandes_detachees } = await supprimerClient(aSupprimer.id_client);
       setMessage(
         commandes_detachees > 0
-          ? `Cliente supprimée — ${commandes_detachees} commande(s) conservées dans les statistiques.`
-          : 'Cliente supprimée.'
+          ? `Client supprimé — ${commandes_detachees} commande(s) conservées dans les statistiques.`
+          : 'Client supprimé.'
       );
     } catch (e) {
       // On affiche le message du serveur tel quel : c'est lui qui connaît le nombre de commandes

@@ -18,7 +18,7 @@ function normaliserTelephone(brut) {
 }
 
 // Valide un numéro DÉJÀ normalisé. Renvoie un message ou null.
-// Les fixes sont acceptés : ces clientes sont encodables et seront appelées manuellement.
+// Les fixes sont acceptés : ces clients sont encodables et seront appelés manuellement.
 function validerTelephone(normalise) {
   if (MOBILE.test(normalise) || FIXE.test(normalise)) return null;
   return 'Numéro belge invalide : 10 chiffres pour un mobile (0475…), 9 pour un fixe (068…).';

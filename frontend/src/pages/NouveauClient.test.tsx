@@ -64,7 +64,7 @@ describe('NouveauClient', () => {
     expect(screen.getByPlaceholderText('Nom')).toHaveValue('');
     expect(screen.getByPlaceholderText('Téléphone')).toHaveValue('');
     expect(screen.queryByText('K7QF2M9X')).not.toBeInTheDocument();
-    // L'état d'impression doit repartir de zéro, sinon la cliente suivante s'affiche
+    // L'état d'impression doit repartir de zéro, sinon le client suivant s'affiche
     // comme déjà imprimée.
     expect(screen.queryByText('Étiquette imprimée.')).not.toBeInTheDocument();
   });

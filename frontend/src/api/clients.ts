@@ -33,7 +33,7 @@ export function supprimerClient(
   });
 }
 
-// Historique des commandes d'une cliente, avec la chronologie de leurs changements de statut.
+// Historique des commandes d'un client, avec la chronologie de leurs changements de statut.
 export function historiqueClient(id: string): Promise<HistoriqueDunClient> {
   return requeteApi<HistoriqueDunClient>(`/clients/${encodeURIComponent(id)}/historique`);
 }

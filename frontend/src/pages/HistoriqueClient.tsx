@@ -7,7 +7,7 @@ import { formaterHMS } from '../composants/Chrono';
 const dateFr = (iso: string) => new Date(iso).toLocaleDateString('fr-BE');
 const dateHeureFr = (iso: string) => new Date(iso).toLocaleString('fr-BE');
 
-// Historique d'une cliente : une ligne par commande, dépliable sur sa chronologie de statuts.
+// Historique d'un client : une ligne par commande, dépliable sur sa chronologie de statuts.
 // Écran de la gérante, pensé pour répondre à une contestation (#290).
 export function HistoriqueClient() {
   const { id = '' } = useParams();
@@ -23,7 +23,7 @@ export function HistoriqueClient() {
       </h1>
       <Link to="/clients" className="self-start underline">Retour aux clients</Link>
 
-      {data.commandes.length === 0 && <p>Cette cliente n'a aucune commande.</p>}
+      {data.commandes.length === 0 && <p>Ce client n'a aucune commande.</p>}
 
       <ul className="flex flex-col gap-2">
         {data.commandes.map((c) => (

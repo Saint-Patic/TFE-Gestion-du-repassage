@@ -120,7 +120,7 @@ describe('Clients', () => {
   });
 
   // Une étiquette collée s'abîme ou se perd, et le code-barres appartient au CLIENT :
-  // sans réimpression, la cliente devenait définitivement non scannable (#340).
+  // sans réimpression, le client devenait définitivement non scannable (#340).
   test('clic 🖨 réimprime l’étiquette du client de la ligne', async () => {
     vi.mocked(listerClients).mockResolvedValue(liste);
     rendre();

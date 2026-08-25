@@ -3,7 +3,7 @@ const { envoyer } = require('./sortie');
 
 // Génère (ou imprime, selon MODE_SORTIE) une étiquette par code emplacement.
 // Le code sert de titre ET de code-barres, d'où le gabarit « emplacement » : pas de
-// répétition du code en clair, et une mise en page plus sobre que celle des clientes.
+// répétition du code en clair, et une mise en page plus sobre que celle des clients.
 async function imprimerEmplacements(codes) {
   const resultats = [];
   for (const code of codes) {

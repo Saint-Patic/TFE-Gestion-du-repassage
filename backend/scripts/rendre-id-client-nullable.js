@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
-// Migration idempotente : rend commande.id_client nullable, pour que la suppression d'une cliente
+// Migration idempotente : rend commande.id_client nullable, pour que la suppression d'un client
 // puisse DÉTACHER ses commandes au lieu de les supprimer. La requête des statistiques (#300) ne
 // joint jamais `client` : détacher préserve donc les chiffres, là où une cascade aurait fait
 // disparaître les lignes de historique_statut sur lesquelles elle s'ancre.

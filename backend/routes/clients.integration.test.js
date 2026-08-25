@@ -231,7 +231,7 @@ describe('DELETE /api/clients/:id — suppression définitive', () => {
     expect(res.status).toBe(401);
   });
 
-  test('cliente sans commande → 200 et 0 commande détachée', async () => {
+  test('client sans commande → 200 et 0 commande détachée', async () => {
     const { pool, appels } = fauxPool({ nbDetachees: 0 });
     const res = await request(creerApp(pool))
       .delete('/api/clients/abc')
@@ -243,7 +243,7 @@ describe('DELETE /api/clients/:id — suppression définitive', () => {
 
   // Le cœur de la fonctionnalité : les commandes ne sont pas supprimées, elles perdent leur
   // propriétaire. Sans cela, les statistiques du #300 diminueraient rétroactivement.
-  test('cliente avec 3 commandes récupérées → 200, les commandes sont détachées', async () => {
+  test('client avec 3 commandes récupérées → 200, les commandes sont détachées', async () => {
     const { pool, appels } = fauxPool({ nbDetachees: 3 });
     const res = await request(creerApp(pool))
       .delete('/api/clients/abc')
@@ -256,7 +256,7 @@ describe('DELETE /api/clients/:id — suppression définitive', () => {
   });
 
   // Le linge est physiquement dans l'atelier : refuser, et surtout ne RIEN écrire.
-  test('cliente avec une commande non récupérée → 409 sans aucun UPDATE ni DELETE', async () => {
+  test('client avec une commande non récupérée → 409 sans aucun UPDATE ni DELETE', async () => {
     const { pool, appels } = fauxPool({ nbActives: 2 });
     const res = await request(creerApp(pool))
       .delete('/api/clients/abc')
@@ -269,7 +269,7 @@ describe('DELETE /api/clients/:id — suppression définitive', () => {
     expect(appels).not.toContain('COMMIT');
   });
 
-  test('cliente inexistante → 404 + ROLLBACK', async () => {
+  test('client inexistant → 404 + ROLLBACK', async () => {
     const { pool, appels } = fauxPool({ clientTrouve: false });
     const res = await request(creerApp(pool))
       .delete('/api/clients/zzz')
@@ -409,7 +409,7 @@ describe('Validation du téléphone (US #270)', () => {
     expect(appels[0].params[2]).toBe('0475664101');
   });
 
-  test('fixe accepté : la cliente est encodable, elle sera appelée', async () => {
+  test('fixe accepté : le client est encodable, il sera appelé', async () => {
     const app = creerApp({ query: async () => ({ rows: [{ id_client: 'c1' }] }) });
     const res = await request(app).post('/api/clients')
       .set('Authorization', `Bearer ${jetonValide()}`)
@@ -465,7 +465,7 @@ describe('GET /api/clients/:id/historique (US #290)', () => {
     expect(res.status).toBe(403);
   });
 
-  test('cliente inexistante → 404', async () => {
+  test('client inexistant → 404', async () => {
     const { pool } = poolHistorique({ client: null });
     const res = await request(creerApp(pool))
       .get(`/api/clients/${UUID_TEST}/historique`)
@@ -473,7 +473,7 @@ describe('GET /api/clients/:id/historique (US #290)', () => {
     expect(res.status).toBe(404);
   });
 
-  test('cliente sans commande → 200 et liste vide, sans interroger historique_statut', async () => {
+  test('client sans commande → 200 et liste vide, sans interroger historique_statut', async () => {
     const { pool, appels } = poolHistorique({ commandes: [] });
     const res = await request(creerApp(pool))
       .get(`/api/clients/${UUID_TEST}/historique`)

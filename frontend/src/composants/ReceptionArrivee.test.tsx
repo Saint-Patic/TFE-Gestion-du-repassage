@@ -99,7 +99,7 @@ describe('ReceptionArrivee — réception (US #150)', () => {
   // Sur tablette, le scanner appairé en Bluetooth fait passer le système pour équipé d'un
   // clavier matériel : le clavier logiciel ne s'affiche plus. Les mannes doivent donc être
   // comptables sans frappe — soit en rescannant, soit au pavé tactile (#340).
-  test('rescanner la même cliente incrémente le nombre de mannes', async () => {
+  test('rescanner le même client incrémente le nombre de mannes', async () => {
     vi.mocked(rechercherClientParCodeBarre).mockResolvedValue(client);
     render(<ReceptionArrivee onFermer={() => {}} />);
     const champ = screen.getByPlaceholderText('Code-barres');
@@ -116,7 +116,7 @@ describe('ReceptionArrivee — réception (US #150)', () => {
     expect(rechercherClientParCodeBarre).toHaveBeenCalledTimes(1);
   });
 
-  test('scanner une AUTRE cliente change de cliente et repart à une manne', async () => {
+  test('scanner un AUTRE client change de client et repart à une manne', async () => {
     const autre = { ...client, id_client: 'xyz', nom: 'Martin', prenom: 'Jean', code_barre: 'ZZZZ1111' };
     vi.mocked(rechercherClientParCodeBarre).mockImplementation(async (code: string) =>
       code === 'ZZZZ1111' ? autre : client

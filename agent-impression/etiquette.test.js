@@ -45,7 +45,7 @@ test('le gabarit emplacement n’écrit pas le code en clair', async () => {
   expect(compterPages(emplacement)).toBe(1);
 });
 
-// Les deux gabarits ne doivent pas être ramenés à un seul : l'étiquette cliente a été
+// Les deux gabarits ne doivent pas être ramenés à un seul : l'étiquette client a été
 // agrandie au #340, celle d'un emplacement devait garder sa mise en page d'origine.
 test('les deux gabarits produisent des mises en page différentes', async () => {
   const commun = { nom: 'A1G', prenom: '', code_barre: 'A1G' };

@@ -1,4 +1,4 @@
-// Gabarit du SMS annonçant à la cliente que son linge est prêt.
+// Gabarit du SMS annonçant au client que son linge est prêt.
 //
 // ⚠️ Contrainte d'encodage : un SMS tient en 160 caractères tant qu'il n'utilise que
 // l'alphabet GSM 7 bits. Un seul caractère hors table — « ê », « ç » minuscule,

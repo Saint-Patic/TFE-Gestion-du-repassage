@@ -6,7 +6,7 @@ const MM_VERS_PT = 2.834645669;
 // Deux gabarits, parce que les deux étiquettes ne servent pas la même chose.
 //
 // - `client` : lue à bout de bras au comptoir, sur une carte qui reste des mois entre
-//   les mains de la cliente. Nom et code-barres agrandis au #340, et le code répété en
+//   les mains du client. Nom et code-barres agrandis au #340, et le code répété en
 //   clair sous le code-barres pour rester exploitable si les barres s'abîment.
 // - `emplacement` : collée sur une étagère, scannée de près. Mise en page d'origine,
 //   volontairement plus sobre : le code sert déjà de titre, le répéter en clair serait

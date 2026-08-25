@@ -1,5 +1,5 @@
 // Masque le numéro dans les journaux : on ne garde que les 4 derniers chiffres.
-// Un journal de passerelle ne doit pas devenir un fichier de numéros de clientes.
+// Un journal de passerelle ne doit pas devenir un fichier de numéros de clients.
 function masquer(numero) {
   const s = String(numero);
   if (s.length <= 4) return '****';

@@ -19,7 +19,7 @@ function creerRouteurSms(pool) {
 
   // Retire les SMS à envoyer, du plus ancien au plus récent (FIFO).
   // Le numéro n'est pas stocké dans la file : il est résolu ici par jointure (minimisation RGPD),
-  // ce qui exclut au passage les clientes anonymisées (téléphone vidé par le #100).
+  // ce qui exclut au passage les clients anonymisés (téléphone vidé par le #100).
   routeur.get('/en-attente', authentifierPasserelle, async (req, res) => {
     try {
       const resultat = await pool.query(
@@ -40,7 +40,7 @@ function creerRouteurSms(pool) {
 
   // Accuse l'envoi. IDEMPOTENT : si le réseau coupe après l'envoi mais avant l'accusé,
   // la passerelle réessaiera l'accusé — répondre en erreur ferait repartir un SMS
-  // déjà reçu par la cliente.
+  // déjà reçu par le client.
   routeur.post('/:id/envoye', authentifierPasserelle, async (req, res) => {
     try {
       const maj = await pool.query(

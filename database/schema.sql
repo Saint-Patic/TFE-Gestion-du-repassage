@@ -57,7 +57,7 @@ CREATE TABLE emplacement (
 -- ============================================================
 CREATE TABLE commande (
     id_commande         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    -- Nullable : supprimer une cliente DÉTACHE ses commandes (id_client → NULL) au lieu de les
+    -- Nullable : supprimer un client DÉTACHE ses commandes (id_client → NULL) au lieu de les
     -- supprimer, ce qui préserve les statistiques (#300). Pas de ON DELETE ici : le détachement
     -- doit être explicite dans la transaction de suppression, jamais implicite.
     id_client           UUID REFERENCES client(id_client),

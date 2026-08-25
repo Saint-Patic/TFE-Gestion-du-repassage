@@ -40,7 +40,7 @@ describe('GET /api/sms/en-attente (US #240)', () => {
     expect(appels).toHaveLength(0);
   });
 
-  test('succès → 200, FIFO, exclut les clientes anonymisées, limite par défaut 10', async () => {
+  test('succès → 200, FIFO, exclut les clients anonymisés, limite par défaut 10', async () => {
     const lignes = [{ id_sms: UUID_SMS, telephone: '0470123456', message: 'Prêt.' }];
     const { pool, appels } = poolFactice([{ rowCount: 1, rows: lignes }]);
     const res = await request(creerApp(pool)).get('/api/sms/en-attente').set(entete());

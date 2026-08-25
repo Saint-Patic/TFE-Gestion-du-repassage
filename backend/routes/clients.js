@@ -54,7 +54,7 @@ function creerRouteurClients(pool) {
     }
   });
 
-  // Historique complet des commandes d'une cliente, avec la chronologie de leurs changements de
+  // Historique complet des commandes d'un client, avec la chronologie de leurs changements de
   // statut. Outil de la gérante pour répondre à une contestation (#290) : c'est ici que la table
   // historique_statut, écrite depuis le #220, est enfin lue.
   routeur.get('/:id/historique', authentifier, exigerRole('gerante'), async (req, res) => {
@@ -157,13 +157,13 @@ function creerRouteurClients(pool) {
     }
   });
 
-  // Supprime DÉFINITIVEMENT une cliente. Ses commandes passées sont DÉTACHÉES (id_client → NULL),
+  // Supprime DÉFINITIVEMENT un client. Ses commandes passées sont DÉTACHÉES (id_client → NULL),
   // jamais supprimées : la requête des statistiques (#300) ne joint pas `client`, les chiffres
   // restent donc exacts, alors qu'une cascade aurait fait disparaître les lignes de
   // historique_statut sur lesquelles elle s'ancre.
   //
   // Refus tant qu'il reste des commandes non récupérées : le linge est alors physiquement dans
-  // l'atelier, et le Kanban ne doit jamais afficher une carte active sans cliente.
+  // l'atelier, et le Kanban ne doit jamais afficher une carte active sans client.
   //
   // La variable de connexion s'appelle `connexion` et non `client` comme ailleurs : ici `client`
   // désigne déjà le domaine métier, le contresens serait permanent.

@@ -118,12 +118,12 @@ describe('transaction de clôture (US #330)', () => {
     expect(res.status).toBe(409);
 
     // Pas de doublon : la garde est la machine à états (#228), pas une contrainte dédiée.
-    // Une cliente qui recevrait deux fois le même SMS n'est pas un détail cosmétique.
+    // Un client qui recevrait deux fois le même SMS n'est pas un détail cosmétique.
     const sms = await pool.query('SELECT count(*)::int AS n FROM sms_en_attente');
     expect(sms.rows[0].n).toBe(1);
   });
 
-  test('cliente au fixe → clôture réussie mais AUCUNE ligne SMS', async () => {
+  test('client au fixe → clôture réussie mais AUCUNE ligne SMS', async () => {
     // 9 chiffres = fixe (068 = Tournai). Le 04 est à la fois préfixe mobile et indicatif
     // de Liège : c'est la LONGUEUR qui discrimine (#270).
     const idClient = await semerClient(pool, { telephone: '068123456' });

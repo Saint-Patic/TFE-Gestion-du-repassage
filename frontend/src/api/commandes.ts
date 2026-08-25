@@ -84,7 +84,7 @@ export function resoudreScan(codeBarre: string): Promise<{ commandes: CommandeAS
   return requeteApi(`/commandes/a-scanner/${encodeURIComponent(codeBarre)}`);
 }
 
-// Enregistre la remise du linge à la cliente : « fait » → « récupéré ».
+// Enregistre la remise du linge au client : « fait » → « récupéré ».
 export function marquerRecuperee(id: string): Promise<Commande> {
   return requeteApi<Commande>(`/commandes/${encodeURIComponent(id)}/recuperer`, { method: 'POST' });
 }

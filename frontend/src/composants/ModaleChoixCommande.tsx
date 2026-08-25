@@ -15,7 +15,7 @@ const VERBES: Record<CommandeAScanner['action'], string> = {
 
 const dateFr = (iso: string) => new Date(iso).toLocaleDateString('fr-BE');
 
-// Choix de la commande à traiter quand une cliente en a plusieurs au scan.
+// Choix de la commande à traiter quand un client en a plusieurs au scan.
 export function ModaleChoixCommande({ commandes, onChoisir, onAnnuler }: Props) {
   const premiere = commandes[0];
 

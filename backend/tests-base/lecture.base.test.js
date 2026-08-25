@@ -106,7 +106,7 @@ describe('filtrage du Kanban en base réelle (US #330)', () => {
       .set('Authorization', `Bearer ${jetonRepasseuse()}`);
 
     expect(res.status).toBe(200);
-    // Sans cela, une cliente ne pourrait pas repartir avec son linge si la repasseuse
+    // Sans cela, un client ne pourrait pas repartir avec son linge si la repasseuse
     // qui l'a traité est absente.
     expect(res.body.filter((c) => c.statut === 'fait')).toHaveLength(1);
   });

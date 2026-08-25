@@ -352,16 +352,16 @@ describe('GET /api/commandes (US #180)', () => {
     expect(sqlVue).toMatch(/c\.cintres_entr_nb/);
   });
 
-  // Une commande détachée (cliente supprimée) ne doit pas DISPARAÎTRE du tableau à cause d'un
+  // Une commande détachée (client supprimé) ne doit pas DISPARAÎTRE du tableau à cause d'un
   // JOIN strict. Seule la colonne « Récupéré (aujourd'hui) » peut en afficher une, le garde-fou
-  // de la suppression interdisant de supprimer une cliente ayant des commandes actives.
-  test('tolère une commande sans cliente (LEFT JOIN + repli sur le nom)', async () => {
+  // de la suppression interdisant de supprimer un client ayant des commandes actives.
+  test('tolère une commande sans client (LEFT JOIN + repli sur le nom)', async () => {
     let sqlVue = '';
     const app = creerApp({ query: async (sql) => { sqlVue = sql; return { rows: [] }; } });
     const res = await request(app).get('/api/commandes').set('Authorization', `Bearer ${jetonGerante()}`);
     expect(res.status).toBe(200);
     expect(sqlVue).toMatch(/LEFT JOIN client/);
-    expect(sqlVue).toMatch(/COALESCE\(cl\.nom, 'Cliente supprimée'\)/);
+    expect(sqlVue).toMatch(/COALESCE\(cl\.nom, 'Client supprimé'\)/);
   });
 });
 
@@ -748,7 +748,7 @@ describe('GET /api/commandes/a-scanner/:code_barre (US #260)', () => {
     expect(res.body.commandes[0].action).toBe('recuperer');
   });
 
-  test('expose le nom de la cliente pour la confirmation (US #280)', async () => {
+  test('expose le nom du client pour la confirmation (US #280)', async () => {
     const { pool, appels } = poolResolution([
       { ...cmdEnCours, statut: 'fait', client_nom: 'Dupont', client_prenom: 'Marie' },
     ]);
@@ -906,7 +906,7 @@ describe('POST /api/commandes/:id/cloturer (US #260)', () => {
     expect(f.appels.some((a) => /INSERT INTO sms_en_attente/i.test(a.sql))).toBe(false);
   });
 
-  test('cliente sans mobile (fixe) → clôture OK mais AUCUN SMS déposé (US #270)', async () => {
+  test('client sans mobile (fixe) → clôture OK mais AUCUN SMS déposé (US #270)', async () => {
     const f = poolCloture({ commande: { ...enCours, telephone: '068123456' } });
     const res = await request(creerApp(f.pool, jest.fn()))
       .post(`/api/commandes/${UUID_CMD}/cloturer`)

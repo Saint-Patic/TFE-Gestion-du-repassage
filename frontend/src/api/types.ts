@@ -49,7 +49,7 @@ export type EmplacementCommande = { code_barre: string; nombre_mannes: number };
 export type CommandeCarte = Commande & {
   client_nom: string;
   client_prenom: string;
-  // Booléen calculé côté serveur : le numéro de la cliente ne transite pas jusqu'ici.
+  // Booléen calculé côté serveur : le numéro du client ne transite pas jusqu'ici.
   client_mobile?: boolean;
   // Nom de la repasseuse attitrée ; null si la commande n'en a pas.
   repasseuse_nom?: string | null;

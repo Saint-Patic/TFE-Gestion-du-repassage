@@ -64,9 +64,9 @@ beforeEach(async () => {
   await semerUtilisateurs(pool);
 });
 
-describe('Suppression définitive d’une cliente', () => {
+describe('Suppression définitive d’un client', () => {
   // LA propriété demandée : les chiffres du #300 ne bougent pas d'un iota.
-  test('supprimer une cliente ne change PAS les statistiques', async () => {
+  test('supprimer un client ne change PAS les statistiques', async () => {
     const idClient = await semerClient(pool);
     await creerCommandeTerminee(idClient, 1800);
     const { debut, fin } = periodeDuJour();
@@ -99,7 +99,7 @@ describe('Suppression définitive d’une cliente', () => {
     expect(historique.rows[0].n).toBe(1);
   });
 
-  test('refuse en 409 tant qu’une commande n’est pas récupérée, et la cliente reste en base', async () => {
+  test('refuse en 409 tant qu’une commande n’est pas récupérée, et le client reste en base', async () => {
     const idClient = await semerClient(pool);
     await pool.query(
       `INSERT INTO commande (id_client, nombre_mannes, statut, id_repasseuse)
@@ -117,7 +117,7 @@ describe('Suppression définitive d’une cliente', () => {
     expect(reste.rows[0].n).toBe(1);
   });
 
-  test('le Kanban affiche « Cliente supprimée » pour une commande détachée du jour', async () => {
+  test('le Kanban affiche « Client supprimé » pour une commande détachée du jour', async () => {
     const idClient = await semerClient(pool);
     await creerCommandeTerminee(idClient, 600);
     await request(app)
@@ -129,7 +129,7 @@ describe('Suppression définitive d’une cliente', () => {
       .set('Authorization', `Bearer ${jetonGerante()}`);
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(res.body[0].client_nom).toBe('Cliente supprimée');
+    expect(res.body[0].client_nom).toBe('Client supprimé');
     expect(res.body[0].client_mobile).toBeNull();
   });
 });

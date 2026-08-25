@@ -51,7 +51,7 @@ export function ReceptionArrivee({ onFermer }: Props) {
     setCode('');
     if (!scanne) return;
 
-    // Rescanner la même cliente = une manne de plus, résolu sans appel serveur. Même geste
+    // Rescanner le même client = une manne de plus, résolu sans appel serveur. Même geste
     // qu'au placement (#160), et surtout : aucune frappe requise, donc utilisable sur une
     // tablette où le scanner appairé masque le clavier logiciel (#340).
     if (client && scanne === client.code_barre.toUpperCase()) {
@@ -145,7 +145,7 @@ export function ReceptionArrivee({ onFermer }: Props) {
                 onChange={compterMannes}
               />
               <p className="text-xs text-gray-500">
-                Rescanner la cliente ajoute une manne — ou utilisez les boutons.
+                Rescanner le client ajoute une manne — ou utilisez les boutons.
               </p>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={prioritaire} onChange={(e) => setPrioritaire(e.target.checked)} />

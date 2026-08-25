@@ -53,16 +53,16 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
         // inclus volontairement, sans quoi la carte disparaîtrait juste après la remise.
         filtreRepasseuse = ` AND (c.statut IN ('fait','recupere') OR c.id_repasseuse = $${params.length})`;
       }
-      // LEFT JOIN : une cliente supprimée laisse ses commandes détachées (id_client NULL). Le repli
+      // LEFT JOIN : un client supprimé laisse ses commandes détachées (id_client NULL). Le repli
       // sur le nom vit dans le SQL et non dans React, pour n'avoir qu'un seul endroit à corriger —
       // CarteCommande et ses tests restent inchangés. client_mobile vaut alors NULL, et le badge
-      // « à appeler » du #270 teste === false : une commande sans cliente n'en affiche donc aucun.
+      // « à appeler » du #270 teste === false : une commande sans client n'en affiche donc aucun.
       // repasseuse_nom et emplacements alimentent la vue détaillée d'une commande.
       const resultat = await pool.query(
         `SELECT c.id_commande, c.id_client, c.statut, c.nombre_mannes,
                 c.prioritaire, c.cintres_client, c.cintres_entr_rendus, c.cintres_entr_nb, c.date_reception, c.id_repasseuse,
                 c.repassage_debut, c.temps_repassage_s,
-                COALESCE(cl.nom, 'Cliente supprimée') AS client_nom,
+                COALESCE(cl.nom, 'Client supprimé') AS client_nom,
                 COALESCE(cl.prenom, '') AS client_prenom,
                 (cl.telephone ~ '^04[0-9]{8}$') AS client_mobile,
                 u.nom AS repasseuse_nom,
@@ -92,7 +92,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
   // Résout l'action à effectuer pour un scan de code-barres client. LECTURE PURE : ne modifie rien.
   // DOUBLE PÉRIMÈTRE : une commande « fait » est trouvée quelle que soit la repasseuse (la remise au
   // comptoir est collective), tandis que « en cours » et « à faire » restent limitées aux siennes.
-  // Priorité : remettre d'abord (la cliente est devant vous), puis terminer, puis démarrer.
+  // Priorité : remettre d'abord (le client est devant vous), puis terminer, puis démarrer.
   routeur.get('/a-scanner/:code_barre', authentifier, exigerRole('repasseuse'), async (req, res) => {
     try {
       const resultat = await pool.query(
@@ -258,7 +258,7 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
       );
 
       // Dépôt du SMS DANS la transaction (#250) : pas de clôture, pas de SMS.
-      // Un fixe ne peut pas recevoir de SMS : la cliente sera appelée manuellement (#270).
+      // Un fixe ne peut pas recevoir de SMS : le client sera appelé manuellement (#270).
       // On ne dépose alors AUCUNE ligne, plutôt qu'une qui resterait éternellement en attente.
       if (estMobile(commande.telephone)) {
         await mettreEnFileSms(client, req.params.id, construireMessagePret());
@@ -280,8 +280,8 @@ function creerRouteurCommandes(pool, diffuserMaj = () => {}) {
     }
   });
 
-  // Remise du linge à la cliente : « fait → récupéré », la dernière transition du workflow.
-  // NON SCOPÉ à la repasseuse : la remise se fait au comptoir, par qui est disponible — une cliente
+  // Remise du linge au client : « fait → récupéré », la dernière transition du workflow.
+  // NON SCOPÉ à la repasseuse : la remise se fait au comptoir, par qui est disponible — un client
   // ne doit pas repartir sans son linge parce que la repasseuse qui l'a encodé est absente.
   routeur.post('/:id/recuperer', authentifier, exigerRole('repasseuse'), async (req, res) => {
     let client;

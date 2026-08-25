@@ -22,7 +22,7 @@ export function CarteCommande({ commande, onOuvrir, onModifier, onPause, onRepre
       onClick={onOuvrir ? () => onOuvrir(commande) : undefined}
     >
       <span className="font-semibold">{commande.client_prenom} {commande.client_nom}</span>
-      {/* Cliente sans mobile : aucun SMS n'a été envoyé, il faut l'appeler (#270).
+      {/* Client sans mobile : aucun SMS n'a été envoyé, il faut l'appeler (#270).
           Le test `=== false` évite de marquer toutes les cartes quand le champ est absent. */}
       {commande.statut === 'fait' && commande.client_mobile === false && (
         <span className="self-start rounded bg-amber-100 px-2 py-0.5 text-sm">à appeler</span>

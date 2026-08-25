@@ -40,7 +40,7 @@ beforeEach(() => {
 });
 
 describe('HistoriqueClient', () => {
-  test('affiche le nom de la cliente et ses commandes', async () => {
+  test('affiche le nom du client et ses commandes', async () => {
     vi.mocked(historiqueClient).mockResolvedValue(donnees as never);
     rendre();
     expect(await screen.findByText(/Marie Dupont/)).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe('HistoriqueClient', () => {
     expect(screen.getByText(/par Sophie/)).toBeInTheDocument();
   });
 
-  test('cliente sans commande → message explicite', async () => {
+  test('client sans commande → message explicite', async () => {
     vi.mocked(historiqueClient).mockResolvedValue({ ...donnees, commandes: [] } as never);
     rendre();
     expect(await screen.findByText(/aucune commande/i)).toBeInTheDocument();

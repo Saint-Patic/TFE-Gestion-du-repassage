@@ -10,7 +10,7 @@ const base = {
 };
 
 describe('ModaleDetailCommande', () => {
-  test('affiche cliente, statut, mannes et repasseuse', () => {
+  test('affiche client, statut, mannes et repasseuse', () => {
     render(<ModaleDetailCommande
       commande={{ ...base, statut: 'a_faire' as const, repasseuse_nom: 'Lucie' }}
       onFermer={vi.fn()} />);
