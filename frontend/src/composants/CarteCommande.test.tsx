@@ -145,4 +145,22 @@ describe('CarteCommande', () => {
     render(<CarteCommande commande={{ ...base, statut: 'a_faire' }} />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
+
+  test('carte occupant une case → emplacement affiché sur la carte', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'a_faire',
+      emplacements: [{ code_barre: 'A1G', nombre_mannes: 3 }] }} />);
+    expect(screen.getByText('A1G (3)')).toBeInTheDocument();
+  });
+
+  test('carte occupant plusieurs cases → emplacements listés', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'fait',
+      emplacements: [{ code_barre: 'A1G', nombre_mannes: 1 }, { code_barre: 'B2C', nombre_mannes: 2 }] }} />);
+    expect(screen.getByText('A1G (1), B2C (2)')).toBeInTheDocument();
+  });
+
+  test('carte sans emplacement → rien affiché, pas de tiret', () => {
+    render(<CarteCommande commande={{ ...base, statut: 'en_cours',
+      repassage_debut: null, temps_repassage_s: 0, emplacements: [] }} />);
+    expect(screen.queryByText('—')).not.toBeInTheDocument();
+  });
 });

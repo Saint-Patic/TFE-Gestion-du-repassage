@@ -17,7 +17,7 @@ const LIBELLES_STATUT: Record<CommandeCarte['statut'], string> = {
 };
 
 // « A1G (1), B2C (2) », ou un tiret si la commande n'occupe aucun emplacement.
-function formaterEmplacements(commande: CommandeCarte): string {
+export function formaterEmplacements(commande: CommandeCarte): string {
   const liste = commande.emplacements ?? [];
   if (liste.length === 0) return '—';
   return liste.map((e) => `${e.code_barre} (${e.nombre_mannes})`).join(', ');

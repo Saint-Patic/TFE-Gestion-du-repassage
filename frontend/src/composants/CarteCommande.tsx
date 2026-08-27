@@ -1,6 +1,7 @@
 import type { CommandeCarte } from '../api/types';
 import { Chrono } from './Chrono';
 import { ChampNombre } from './ChampNombre';
+import { formaterEmplacements } from './ModaleDetailCommande';
 
 type Props = {
   commande: CommandeCarte;
@@ -21,7 +22,16 @@ export function CarteCommande({ commande, onOuvrir, onModifier, onPause, onRepre
       role={onOuvrir ? 'button' : undefined}
       onClick={onOuvrir ? () => onOuvrir(commande) : undefined}
     >
-      <span className="font-semibold">{commande.client_prenom} {commande.client_nom}</span>
+      {/* items-start garde l'emplacement dans le coin haut-droit même si le nom passe à la ligne. */}
+      <span className="flex items-start justify-between gap-2">
+        <span className="min-w-0 font-semibold">{commande.client_prenom} {commande.client_nom}</span>
+        {/* Absent en cours de repassage et après remise : les mannes ont quitté les étagères. */}
+        {commande.emplacements?.length ? (
+          <span className="rounded bg-slate-100 px-1 text-right text-sm text-slate-700">
+            {formaterEmplacements(commande)}
+          </span>
+        ) : null}
+      </span>
       {/* Client sans mobile : aucun SMS n'a été envoyé, il faut l'appeler (#270).
           Le test `=== false` évite de marquer toutes les cartes quand le champ est absent. */}
       {commande.statut === 'fait' && commande.client_mobile === false && (
