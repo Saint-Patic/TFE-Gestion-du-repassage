@@ -9,3 +9,16 @@
   --color-blue-700: #0b5a6e;
   --color-blue-800: #127e96;
 }
+
+/* Fond de bulles blanches. La page ne défile jamais (AppShell borne la hauteur),
+   l'image reste donc fixe sans avoir besoin de background-attachment. */
+body {
+  /* la connexion n'est pas dans AppShell : sans hauteur minimale,
+     « cover » se calcule sur un body trop court et le fond s'arrête à mi-écran */
+  min-height: 100dvh;
+  background-color: #fff;
+  background-image: url("./assets/fond.webp");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+}
