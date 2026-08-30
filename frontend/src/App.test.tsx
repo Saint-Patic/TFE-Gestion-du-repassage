@@ -23,6 +23,6 @@ function rendre() {
 describe('App', () => {
   test('redirige vers la connexion sans session', async () => {
     rendre();
-    expect(await screen.findByText('La Manne à Bulles')).toBeInTheDocument();
+    expect(await screen.findByAltText('La Manne à Bulles')).toBeInTheDocument();
   });
 });

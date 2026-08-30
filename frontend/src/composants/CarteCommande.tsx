@@ -22,7 +22,7 @@ type Props = {
 export function CarteCommande({ commande, onOuvrir, onModifier, onPause, onReprendre, onCintresEntreprise }: Props) {
   return (
     <div
-      className={`flex flex-col gap-1 rounded border p-2 ${commande.prioritaire ? 'border-red-500 bg-red-50' : ''} ${onOuvrir ? 'cursor-pointer' : ''}`}
+      className={`flex flex-col gap-1 rounded border p-2 ${commande.prioritaire ? 'border-red-500 bg-red-50' : 'bg-white'} ${onOuvrir ? 'cursor-pointer' : ''}`}
       role={onOuvrir ? 'button' : undefined}
       onClick={onOuvrir ? () => onOuvrir(commande) : undefined}
     >

@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+/* Palette de la marque : le bleu de Tailwind est remplacé par le cyan « La Manne à Bulles ».
+   Toutes les classes bg-blue-* / text-blue-* du projet suivent automatiquement. */
+@theme {
+  --color-blue-100: #d6f3fa;
+  --color-blue-500: #26bde1;
+  --color-blue-600: #1babce;
+  --color-blue-700: #0b5a6e;
+  --color-blue-800: #127e96;
+}
