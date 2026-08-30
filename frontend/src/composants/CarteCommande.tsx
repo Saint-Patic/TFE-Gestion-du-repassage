@@ -13,8 +13,12 @@ type Props = {
 };
 
 // Carte d'une commande dans le tableau ; un clic dessus ouvre son détail.
-// « Modifier » réservé au statut « à faire » ;
-// « Pause »/« Reprendre » + saisie des cintres entreprise sur les cartes « en cours ».
+// CommandeCarte commande = "commande affichée"
+// function onOuvrir = "ouvre le détail de la commande"
+// function onModifier = "ouvre la modification, seulement en « à faire »"
+// function onPause = "met le chrono en pause"
+// function onReprendre = "relance le chrono"
+// function onCintresEntreprise = "enregistre le nombre de cintres entreprise"
 export function CarteCommande({ commande, onOuvrir, onModifier, onPause, onReprendre, onCintresEntreprise }: Props) {
   return (
     <div
@@ -22,18 +26,14 @@ export function CarteCommande({ commande, onOuvrir, onModifier, onPause, onRepre
       role={onOuvrir ? 'button' : undefined}
       onClick={onOuvrir ? () => onOuvrir(commande) : undefined}
     >
-      {/* items-start garde l'emplacement dans le coin haut-droit même si le nom passe à la ligne. */}
       <span className="flex items-start justify-between gap-2">
         <span className="min-w-0 font-semibold">{commande.client_prenom} {commande.client_nom}</span>
-        {/* Absent en cours de repassage et après remise : les mannes ont quitté les étagères. */}
         {commande.emplacements?.length ? (
           <span className="rounded bg-slate-100 px-1 text-right text-sm text-slate-700">
             {formaterEmplacements(commande)}
           </span>
         ) : null}
       </span>
-      {/* Client sans mobile : aucun SMS n'a été envoyé, il faut l'appeler (#270).
-          Le test `=== false` évite de marquer toutes les cartes quand le champ est absent. */}
       {commande.statut === 'fait' && commande.client_mobile === false && (
         <span className="self-start rounded bg-amber-100 px-2 py-0.5 text-sm">à appeler</span>
       )}
@@ -58,10 +58,8 @@ export function CarteCommande({ commande, onOuvrir, onModifier, onPause, onRepre
         </span>
       )}
       {commande.statut === 'en_cours' && onCintresEntreprise && (
-        <span className="flex items-center gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" onClick={(e) => e.stopPropagation()}>
           <label htmlFor={`cintres-${commande.id_commande}`}>Cintres entreprise</label>
-          {/* Enregistré à chaque changement : avec des boutons il n'y a plus d'événement
-              « blur » sur lequel s'appuyer, et l'UPDATE du #230 est idempotent. */}
           <ChampNombre
             id={`cintres-${commande.id_commande}`}
             libelle="cintres entreprise"
