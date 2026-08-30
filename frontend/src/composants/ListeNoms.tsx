@@ -17,7 +17,7 @@ export function ListeNoms({
           key={u.id_utilisateur}
           type="button"
           onClick={() => onSelection(u)}
-          className="rounded-[0.6rem] border border-blue-600 bg-blue-100 px-[1.2rem] py-[0.9rem] text-[1.35rem]/[2.1rem] text-blue-700 hover:bg-blue-200"
+          className="rounded-[0.6rem] bg-blue-600 px-[1.2rem] py-[0.9rem] text-[1.35rem]/[2.1rem] text-white active:bg-blue-800"
         >
           {u.nom}
         </button>

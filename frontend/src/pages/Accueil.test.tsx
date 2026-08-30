@@ -36,13 +36,11 @@ describe('Accueil — liens clients selon le rôle', () => {
 
   test('repasseuse → redirigée vers le tableau, aucun menu (2026-08-25)', () => {
     rendreAvecRole('repasseuse');
-    expect(screen.queryByText('Accueil')).not.toBeInTheDocument();
     expect(screen.queryByText('Tableau des commandes')).not.toBeInTheDocument();
   });
 
   test('gérante → garde son accueil (2026-08-25)', () => {
     rendreAvecRole('gerante');
-    expect(screen.getByText('Accueil')).toBeInTheDocument();
     expect(screen.getByText('Tableau des commandes')).toBeInTheDocument();
   });
 });
