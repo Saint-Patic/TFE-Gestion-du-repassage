@@ -199,7 +199,7 @@ export function Tableau() {
       {message && <p className="text-red-700">{message}</p>}
 
       {panneau?.type === 'cloture' && (
-        <div className="flex flex-col gap-2 rounded border p-3">
+        <div className="flex flex-col gap-2 rounded-lg border bg-white p-3 shadow-sm">
           <h2 className="font-semibold">Clôture : replacer les mannes</h2>
           <PlacementMannes
             nombreMannes={panneau.commande.nombre_mannes}
@@ -214,13 +214,13 @@ export function Tableau() {
       )}
 
       {panneau?.type === 'reception' && (
-        <div className="flex flex-col gap-2 rounded border p-3">
+        <div className="flex flex-col gap-2 rounded-lg border bg-white p-3 shadow-sm">
           <ReceptionArrivee onFermer={fermerPanneau} />
         </div>
       )}
 
       {panneau?.type === 'reorganisation' && (
-        <div className="flex flex-col gap-2 rounded border p-3">
+        <div className="flex flex-col gap-2 rounded-lg border bg-white p-3 shadow-sm">
           <ReorganisationEmplacements onFermer={fermerPanneau} />
         </div>
       )}

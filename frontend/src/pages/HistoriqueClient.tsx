@@ -17,7 +17,7 @@ export function HistoriqueClient() {
   if (!data) return <p>Chargement…</p>;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow-sm">
       <h1 className="text-xl font-bold">
         Historique — {data.client.prenom} {data.client.nom}
       </h1>

@@ -26,7 +26,7 @@ export function Statistiques() {
   });
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow-sm">
       <h1 className="text-xl font-bold">Statistiques de repassage</h1>
 
       <div className="flex gap-3">

@@ -66,7 +66,7 @@ export function Clients() {
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-3">
+    <div className="flex max-w-2xl flex-col gap-3 rounded-lg bg-white p-4 shadow-sm">
       <h1 className="text-xl font-bold">Clients</h1>
       <input
         className="rounded border p-2"

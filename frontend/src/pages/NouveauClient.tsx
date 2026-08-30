@@ -50,7 +50,7 @@ export function NouveauClient() {
 
   if (client) {
     return (
-      <div className="flex max-w-sm flex-col gap-2">
+      <div className="flex max-w-sm flex-col gap-2 rounded-lg bg-white p-4 shadow-sm">
         <h1 className="text-xl font-bold">Client créé</h1>
         <p>{client.prenom} {client.nom}</p>
         <p>Code-barres : <strong>{client.code_barre}</strong></p>
@@ -73,7 +73,7 @@ export function NouveauClient() {
   }
 
   return (
-    <form onSubmit={soumettre} className="flex max-w-sm flex-col gap-3">
+    <form onSubmit={soumettre} className="flex max-w-sm flex-col gap-3 rounded-lg bg-white p-4 shadow-sm">
       <h1 className="text-xl font-bold">Nouveau client</h1>
       <input className="rounded border p-2" placeholder="Nom" value={nom}
         onChange={(e) => setNom(e.target.value)} required />
