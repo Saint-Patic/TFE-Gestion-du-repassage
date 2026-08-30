@@ -47,7 +47,7 @@ export function Connexion() {
   return (
     <div className="mx-auto mt-10 flex max-w-sm flex-col items-center gap-6 p-4">
       <h1>
-        <img src={logo} alt="La Manne à Bulles" className="w-56 max-w-full" />
+        <img src={logo} alt="La Manne à Bulles" className="w-84 max-w-full" />
       </h1>
       {!selectionnee ? (
         <ListeNoms utilisatrices={utilisatrices} onSelection={setSelectionnee} />
