@@ -1,4 +1,4 @@
-# La Manne à Bulles
+# TFE - La Manne à Bulles
 
 Application web progressive (PWA) de traçabilité numérique pour un service de repassage
 artisanal. Travail de fin d'études.
