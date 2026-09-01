@@ -1,15 +1,36 @@
 # Déploiement — La Manne à Bulles
 
-## Fichiers
+Ce dossier rassemble les fichiers de configuration du serveur et les procédures
+d'exploitation. Le README principal donne la vue d'ensemble et la mise à jour courante ;
+on trouve ici le détail, ainsi que les procédures qui ne concernent pas le serveur : la
+passerelle SMS, les sauvegardes et leur restauration.
 
-- `manne-backend.service` → à copier dans `/etc/systemd/system/`, puis
-  `sudo systemctl enable --now manne-backend`.
-- `nginx-manne.conf` → à copier dans `/etc/nginx/sites-available/manne`, puis lien
-  symbolique dans `/etc/nginx/sites-enabled/` ; `sudo nginx -t && sudo systemctl reload nginx`.
-- `../backend/.env.example` → modèle du `.env` de prod (valeurs renseignées sur le serveur,
-  **jamais** committé).
+## Fichiers du dossier
 
-## Mettre à jour l'application
+| Fichier | Destination |
+|---|---|
+| `manne-backend.service` | `/etc/systemd/system/`, puis `sudo systemctl enable --now manne-backend` |
+| `nginx-manne.conf` | `/etc/nginx/sites-available/manne`, puis lien dans `sites-enabled/` |
+| `sauvegarder-base.sh` | `/usr/local/bin/` sur le serveur |
+| `manne-sauvegarde.service`, `manne-sauvegarde.timer` | `/etc/systemd/system/` |
+| `debiter-sauvegardes.sh` | `/usr/local/bin/debiter-sauvegardes` sur le serveur |
+| `rapatrier-sauvegardes.sh`, `.cmd` | PC de la gérante |
+| `installer-tache-rapatriement.ps1` | PC de la gérante, à exécuter une fois |
+| `effectifs.sql` | requête de contrôle, utilisée à la restauration |
+
+Le modèle du fichier d'environnement de production est `../backend/.env.example`. Les
+valeurs réelles sont renseignées sur le serveur et ne sont jamais versionnées.
+
+## Le serveur
+
+### Emplacements
+
+- Code : `/opt/manne`, dépôt cloné, propriétaire `debian`
+- Backend : service systemd `manne-backend`, à l'écoute sur `127.0.0.1:3000`
+- Frontend : build statique servi par nginx depuis `/opt/manne/frontend/dist`
+- Base : PostgreSQL local, base `manne_bulles`
+
+### Mettre à jour l'application
 
 ```bash
 cd /opt/manne
@@ -19,86 +40,79 @@ cd ../frontend && npm ci && npm run build
 sudo systemctl restart manne-backend
 ```
 
-### Vulnérabilités signalées
-Après un npm ci, npm signale **20 vulnérabilités high***. Elles proviennent uniquement de Jest, l'outil de test, et n'ont aucun impact en production : le backend lance `node server.js` et n'utilise jamais Jest. Vérifiable avec `npm audit --omit=dev`, qui renvoie **0 vulnerabilities**.
-Pour ne même pas les voir apparaître sur le serveur, installer avec `npm ci --omit=dev : seules les dépendances de production sont installées (les devDependencies sont ignorées).
+Le rebuild du frontend n'est pas facultatif dès qu'une modification touche l'interface :
+sans lui, nginx continue de servir l'ancien build et la nouveauté reste invisible.
 
-## Seed initial des emplacements (étagères)
+### Vulnérabilités signalées par npm
 
-Les 42 emplacements physiques (`A1G`…`E3D`) doivent exister en base pour l'encodage
-(scan des emplacements, US #160). À lancer **une fois** après le premier déploiement qui
-inclut #160. Le script est **idempotent** (relançable sans créer de doublon) :
+Après un `npm ci`, npm signale une vingtaine de vulnérabilités hautes. Elles proviennent
+toutes de Jest, l'outil de test : le backend lance `node server.js` et ne charge jamais
+Jest. `npm audit --omit=dev` renvoie zéro.
+
+Pour ne même pas les voir apparaître, installer le backend avec `npm ci --omit=dev`, qui
+ignore les dépendances de développement. Le frontend, lui, garde un `npm ci` complet : le
+build a besoin de Vite et de TypeScript.
+
+### HTTPS
+
+Le TLS est géré par certbot, directement sur le serveur :
+
+```bash
+sudo certbot --nginx -d vps-a87c8d0b.vps.ovh.net
+```
+
+certbot ajoute le vhost `:443` et la redirection `:80 → :443` dans
+`/etc/nginx/sites-available/manne`, et installe un renouvellement automatique par le timer
+systemd `certbot.timer`.
+
+Le `nginx-manne.conf` de ce dossier est le vhost HTTP de base. Une fois certbot passé, ne
+pas le recopier par-dessus la configuration du serveur : cela écraserait la configuration
+TLS. Les mises à jour applicatives, elles, ne touchent pas à nginx.
+
+## La base de données
+
+### Seeds initiaux
+
+À lancer une fois sur une installation neuve. Les deux scripts sont idempotents.
 
 ```bash
 cd /opt/manne/backend
+node scripts/seed-utilisateurs.js
 node scripts/seed-emplacements.js
 ```
 
-Sortie attendue : `Emplacements insérés : 42 (sur 42).` (puis `0 (sur 42).` aux relances).
-Le script lit les identifiants de la base dans `backend/.env`.
+Le second insère les emplacements physiques d'étagère, indispensables au scan à la
+réception. Sortie attendue au premier passage, puis `0` aux suivants.
 
-## Migration — colonne cintres_entr_rendus (US #170)
+### Migrations
 
-La base prod existe déjà : la nouvelle colonne `commande.cintres_entr_rendus` (booléen « le client
-a rendu des cintres entreprise ») est ajoutée par un script **idempotent** (`ADD COLUMN IF NOT
-EXISTS`), à lancer **une fois** après le déploiement qui inclut #170 :
+Le schéma versionné intègre toutes les migrations : une base neuve n'en réclame aucune.
+Sur une base déjà en service, les jouer dans cet ordre. Toutes sont idempotentes,
+rejouables sans risque, et affichent une ligne de confirmation. Elles lisent les
+identifiants de la base dans `backend/.env`.
 
 ```bash
 cd /opt/manne/backend
 node scripts/ajouter-cintres-entr-rendus.js
+node scripts/ajouter-au-sol.js
+node scripts/ajouter-id-repasseuse.js
+node scripts/ajouter-repassage-debut.js
+node scripts/creer-sms-en-attente.js
+node scripts/etendre-niveaux-emplacement.js
+node scripts/rendre-id-client-nullable.js
 ```
 
-Sortie attendue : `Colonne cintres_entr_rendus : présente (ajoutée si nécessaire).` Rejouable sans
-risque. Le script lit les identifiants de la base dans `backend/.env`.
+## La passerelle SMS
 
-## Migrations de base de données (ordre d'exécution)
+Le serveur ne peut pas joindre le téléphone, qui est derrière un routeur domestique et
+n'est pas toujours sur place. C'est donc la passerelle qui vient chercher les SMS à
+envoyer, en HTTPS sortant. Aucun port n'est à ouvrir, et un message déposé pendant que le
+téléphone est éteint partira au rallumage.
 
-Liste complète des migrations, dans l'ordre. Toutes sont **idempotentes** (rejouables sans risque) et se
-lancent depuis `/opt/manne/backend`. Utile pour une installation neuve comme pour vérifier qu'un
-serveur existant est à jour :
+Le téléphone peut quitter le local sans aucune reconfiguration : l'appel étant sortant, la
+passerelle fonctionne à l'identique sur le Wi-Fi de l'atelier et en 4G.
 
-```bash
-cd /opt/manne/backend
-node scripts/ajouter-au-sol.js              # US #190 — emplacement « au sol »
-node scripts/ajouter-id-repasseuse.js       # US #200 — attribution des commandes
-node scripts/ajouter-repassage-debut.js     # US #220 — démarrage du timer
-node scripts/creer-sms-en-attente.js        # US #240 — file d'attente des SMS
-node scripts/etendre-niveaux-emplacement.js # US #340 — 4e étage des étagères A à D
-node scripts/rendre-id-client-nullable.js   # suppression définitive d'une cliente
-```
-
-Chacune affiche une ligne de confirmation. Les scripts lisent les identifiants de la base dans
-`backend/.env`.
-
-## Emplacements sur le serveur
-
-- Code : `/opt/manne` (dépôt cloné, propriétaire `debian`)
-- Backend : service systemd `manne-backend` (écoute `127.0.0.1:3000`)
-- Frontend : build statique servi par nginx depuis `/opt/manne/frontend/dist`
-- Base : PostgreSQL local, base `manne_bulles`
-
-## HTTPS (Let's Encrypt)
-
-Le TLS est géré par **certbot** (plugin nginx) directement sur le serveur :
-`sudo certbot --nginx -d vps-a87c8d0b.vps.ovh.net`. certbot ajoute le vhost `:443`
-et la redirection `:80 → :443` dans `/etc/nginx/sites-available/manne`, et installe
-un **renouvellement automatique** (timer systemd `certbot.timer`).
-
-⚠️ `nginx-manne.conf` de ce dossier est le **vhost de base HTTP** (server_name). Après
-le passage de certbot, **ne pas re-copier** ce fichier par-dessus la conf serveur, sinon
-on écrase la configuration TLS. Les mises à jour applicatives (`git pull` + rebuild +
-`systemctl restart manne-backend`) ne touchent pas à la conf nginx.
-
-## Passerelle SMS (US #240, mise en service #270)
-
-Le backend ne peut pas joindre le téléphone (NAT domestique, et le téléphone n'est pas toujours sur
-place) : c'est **la passerelle qui vient chercher** les SMS à envoyer, en HTTPS sortant. Aucun port
-n'est à ouvrir, et un SMS déposé pendant que le téléphone est éteint partira au rallumage.
-
-**Le téléphone peut quitter le local** — le soir, le week-end — **sans aucune reconfiguration** :
-l'appel étant sortant, la passerelle fonctionne à l'identique sur le Wi-Fi de l'atelier et en 4G.
-
-### Côté VPS
+### Côté serveur
 
 Générer le jeton partagé et le poser dans `backend/.env` :
 
@@ -108,15 +122,15 @@ openssl rand -hex 32
 sudo systemctl restart manne-backend
 ```
 
-Le jeton est révocable à tout moment : on le change des deux côtés et on redémarre. S'il est absent du
-`.env`, les routes `/api/sms` répondent `401` — elles ne deviennent jamais publiques par omission.
+Le jeton est révocable à tout moment : on le change des deux côtés et on redémarre. S'il
+est absent du `.env`, les routes `/api/sms` répondent `401` — elles ne deviennent jamais
+publiques par omission.
 
-### Côté téléphone Android
+### Côté téléphone
 
-1. Installer **F-Droid** (il faut autoriser l'installation depuis une source inconnue).
-2. Depuis F-Droid, installer **Termux**, **Termux:API** et **Termux:Boot**.
-   ⚠️ **Uniquement depuis F-Droid** : les versions du Play Store sont abandonnées et l'API SMS n'y
-   fonctionne plus.
+1. Installer F-Droid, ce qui suppose d'autoriser l'installation depuis une source inconnue.
+2. Depuis F-Droid, installer Termux, Termux:API et Termux:Boot. Uniquement depuis F-Droid :
+   les versions du Play Store sont abandonnées et l'API SMS n'y fonctionne plus.
 3. Dans Termux :
 
    ```bash
@@ -127,18 +141,19 @@ Le jeton est révocable à tout moment : on le change des deux côtés et on red
    cp .env.example .env
    ```
 
-   Le dépôt étant public, `git clone` est bien plus commode qu'un transfert de fichiers.
-4. Renseigner `.env` : `URL_API=https://vps-a87c8d0b.vps.ovh.net`, le **même** `JETON_PASSERELLE` que
-   le VPS, et `MODE_ENVOI=console` pour la première mise en route.
-5. Accorder la **permission SMS** à Termux:API, sinon `termux-sms-send` échoue.
-6. **Exclure Termux de l'optimisation de batterie** (Android → Batterie → applications non
-   optimisées), sans quoi le mode Doze suspend la boucle après quelques minutes d'écran éteint.
+   Le dépôt étant public, `git clone` est plus commode qu'un transfert de fichiers.
+4. Renseigner `.env` : `URL_API=https://vps-a87c8d0b.vps.ovh.net`, le même
+   `JETON_PASSERELLE` que le serveur, et `MODE_ENVOI=console` pour la première mise en
+   route.
+5. Accorder la permission SMS à Termux:API, sans quoi `termux-sms-send` échoue.
+6. Exclure Termux de l'optimisation de batterie, dans les réglages Android. Sans cela le
+   mode Doze suspend la boucle après quelques minutes d'écran éteint.
 7. Premier démarrage manuel, pour vérifier : `npm start`.
 
-### Démarrage automatique (Termux:Boot)
+### Démarrage automatique
 
-Le téléphone sera éteint et rallumé régulièrement. Pour que la passerelle reparte seule, créer
-`~/.termux/boot/demarrer-passerelle.sh` :
+Le téléphone est éteint et rallumé régulièrement. Pour que la passerelle reparte seule,
+créer `~/.termux/boot/demarrer-passerelle.sh` :
 
 ```sh
 #!/data/data/com.termux/files/usr/bin/sh
@@ -151,31 +166,36 @@ Puis le rendre exécutable : `chmod +x ~/.termux/boot/demarrer-passerelle.sh`
 
 Deux lignes de ce script ne sont pas cosmétiques :
 
-- **`termux-wake-lock`** empêche Android d'endormir le processus dès l'écran éteint. Sans lui, les SMS
-  partent avec des heures de retard, sans qu'aucune erreur n'apparaisse.
-- **Le `cd`** est tout aussi obligatoire : `index.js` charge sa configuration avec `dotenv`, qui lit le
-  `.env` du **répertoire courant**. Lancé depuis ailleurs — ce que fait Termux:Boot par défaut — le
-  programme ne trouverait ni `URL_API` ni `JETON_PASSERELLE` et s'arrêterait sur son contrôle de
-  démarrage, avec un message trompeur puisque le fichier existe bel et bien.
+- `termux-wake-lock` empêche Android d'endormir le processus dès l'écran éteint. Sans lui,
+  les SMS partent avec des heures de retard, sans qu'aucune erreur n'apparaisse.
+- Le `cd` est tout aussi obligatoire : `index.js` charge sa configuration avec dotenv, qui
+  lit le `.env` du répertoire courant. Lancé depuis ailleurs, ce que fait Termux:Boot par
+  défaut, le programme ne trouverait ni `URL_API` ni `JETON_PASSERELLE` et s'arrêterait sur
+  son contrôle de démarrage, avec un message trompeur puisque le fichier existe.
 
 Le journal s'accumule dans `~/passerelle.log`, consultable par `tail -f ~/passerelle.log`.
 
+Un seul exemplaire de la passerelle doit tourner à la fois : le retrait d'un message ne
+pose aucun verrou, donc deux instances enverraient les SMS en double. Avant tout démarrage
+manuel, vérifier avec `pgrep -af "node index.js"`.
+
 ### Bascule en envoi réel
 
-Une fois la mise en route validée en `MODE_ENVOI=console` — la passerelle vide la file et journalise
-les envois **sans consommer de SMS** —, passer `MODE_ENVOI=sms` dans le `.env` et relancer.
+Une fois la mise en route validée en `MODE_ENVOI=console` — la passerelle vide la file et
+journalise les envois sans consommer de SMS —, passer `MODE_ENVOI=sms` dans le `.env` et
+relancer.
 
-Toujours faire la première mise en route en `console` : c'est ce qui valide le jeton et la connexion au
-VPS **avant** de consommer un vrai SMS. Un refus d'authentification apparaît alors comme
-`Appel /en-attente refusé (HTTP 401)` dans le journal.
+Toujours faire la première mise en route en `console` : c'est ce qui valide le jeton et la
+connexion au serveur avant de consommer un vrai SMS. Un refus d'authentification apparaît
+alors comme `Appel /en-attente refusé (HTTP 401)` dans le journal.
 
-## Sauvegardes automatisées de la base (US #310)
+## Les sauvegardes
 
-Un dump quotidien de `manne_bulles`, sept jours conservés sur le VPS, et une copie rapatriée hors
-site. Le script tourne sous l'utilisateur **`postgres`** : l'authentification `peer` s'applique, donc
-**aucun mot de passe n'est stocké nulle part**.
+Un dump quotidien de `manne_bulles`, sept jours conservés sur le serveur, et une copie
+rapatriée hors site. Le script tourne sous l'utilisateur `postgres` : l'authentification
+`peer` s'applique, donc aucun mot de passe n'est stocké nulle part.
 
-### Installation sur le VPS
+### Installation sur le serveur
 
 ```bash
 # 1. Le script
@@ -183,8 +203,6 @@ sudo cp /opt/manne/deploiement/sauvegarder-base.sh /usr/local/bin/
 sudo chmod +x /usr/local/bin/sauvegarder-base.sh
 
 # 2. Le dossier de destination
-#    setgid (le 2 en tête) : les fichiers créés héritent du groupe `debian`, ce qui permet le
-#    rapatriement par SSH. postgres écrit, debian lit, personne d'autre n'accède.
 sudo mkdir -p /var/backups/manne
 sudo chown postgres:debian /var/backups/manne
 sudo chmod 2750 /var/backups/manne
@@ -195,6 +213,10 @@ sudo cp /opt/manne/deploiement/manne-sauvegarde.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now manne-sauvegarde.timer
 ```
+
+Le `2` en tête du `chmod` est le bit setgid : les fichiers créés héritent du groupe
+`debian`, ce qui rend le rapatriement par SSH possible. `postgres` écrit, `debian` lit,
+personne d'autre n'accède au dossier.
 
 ### Vérifier
 
@@ -212,41 +234,79 @@ sudo journalctl -u manne-sauvegarde -n 20 --no-pager
 ls -l /var/backups/manne
 ```
 
-Attendu : un fichier `manne_bulles-AAAAMMJJ-HHMM.dump` en `-rw-r----- postgres debian`.
-Si le groupe affiché est `postgres` et non `debian`, le bit setgid n'a pas été posé — reprendre le
-`chmod 2750`.
+Attendu : un fichier `manne_bulles-AAAAMMJJ-HHMM.dump` en `-rw-r----- postgres debian`. Si
+le groupe affiché est `postgres` et non `debian`, le bit setgid n'a pas été posé : reprendre
+le `chmod 2750`.
 
-### Rapatriement hors site (PC de la gérante)
+Le `journalctl` demande `sudo`. Le service tourne sous `postgres`, et `debian` n'appartient
+ni au groupe `adm` ni à `systemd-journal` : sans `sudo`, la commande répond « No entries »
+alors que le journal existe.
 
-Les dumps ne vivent sur le VPS que sept jours, et sur une seule machine : **perdre le VPS, ce serait
-perdre la base**. Une copie est donc rapatriée chaque jour sur le PC de la gérante — allumé tous les
-jours ouvrables, sur place, et où le dépôt est déjà cloné pour l'agent d'impression.
+### Restaurer
 
-Le mécanisme tient en une phrase : **le PC de la gérante se connecte en SSH sans rien demander, et le
-VPS lui débite une archive `tar` des sauvegardes.** Ni `rsync` ni `scp` ne sont utilisés — ils ne
-peuvent pas l'être, la clé étant associée à une **commande forcée** côté serveur.
+Procédure à connaître avant d'en avoir besoin.
 
-⚠️ **La clé du PC de la gérante n'ouvre PAS de shell sur la production.** Elle ne permet qu'une chose :
-recevoir les sauvegardes. C'est délibéré : cette machine est un poste de bureau partagé, dans un local
-commercial. La clé d'Alexis, dans le même fichier, garde son accès complet — les restrictions
-s'appliquent **par clé**.
+```bash
+# 1. Base temporaire
+sudo -u postgres createdb manne_bulles_restauration
 
-#### 1. Sur le VPS
+# 2. Restaurer le dump le plus récent, sélectionné automatiquement
+DERNIER=$(ls -t /var/backups/manne/manne_bulles-*.dump | head -1)
+echo "Restauration de $DERNIER"
+sudo -u postgres pg_restore -d manne_bulles_restauration "$DERNIER"
+
+# 3. Comparer les effectifs
+sudo -u postgres psql -d manne_bulles              -f /opt/manne/deploiement/effectifs.sql
+sudo -u postgres psql -d manne_bulles_restauration -f /opt/manne/deploiement/effectifs.sql
+
+# 4. Supprimer la base temporaire
+sudo -u postgres dropdb manne_bulles_restauration
+```
+
+Les deux sorties doivent être identiques ligne pour ligne. Si `postgres` ne peut pas lire
+`/opt/manne`, copier d'abord le script : `cp /opt/manne/deploiement/effectifs.sql /tmp/`.
+
+`effectifs.sql` utilise `count(*)` et non `n_live_tup` de `pg_stat_user_tables`. Cette
+dernière est une estimation issue des statistiques du planificateur, qui ne sont pas encore
+collectées sur une base fraîchement restaurée : elle afficherait des zéros et ferait
+conclure à tort à une restauration ratée.
+
+### Ce qui n'est pas sauvegardé
+
+Seule la base l'est, et c'est voulu : le code applicatif, l'agent d'impression et la
+passerelle SMS vivent dans Git. La base est la seule chose irremplaçable.
+
+## Le rapatriement hors site
+
+Les dumps ne vivent sur le serveur que sept jours, et sur une seule machine : perdre le
+serveur, ce serait perdre la base. Une copie est donc rapatriée chaque jour sur le PC de la
+gérante, allumé tous les jours ouvrables et où le dépôt est déjà cloné pour l'agent
+d'impression.
+
+Le mécanisme tient en une phrase : le PC de la gérante se connecte en SSH sans rien
+demander, et le serveur lui débite une archive `tar` des sauvegardes. Ni `rsync` ni `scp`
+ne sont utilisés — ils ne peuvent pas l'être, la clé étant associée à une commande forcée
+côté serveur.
+
+Cette clé n'ouvre pas de shell sur la production. Elle ne permet qu'une chose : recevoir
+les sauvegardes. C'est délibéré, la machine étant un poste de bureau partagé dans un local
+commercial. La clé d'Alexis, dans le même fichier, garde son accès complet : les
+restrictions s'appliquent par clé.
+
+### Sur le serveur
 
 ```bash
 sudo cp /opt/manne/deploiement/debiter-sauvegardes.sh /usr/local/bin/debiter-sauvegardes
 sudo chmod 755 /usr/local/bin/debiter-sauvegardes
 ```
 
-Le script tourne sous `debian`, qui lit `/var/backups/manne` **par le groupe** grâce au setgid posé
-plus haut. Aucun `sudo`, aucun mot de passe.
+Le script tourne sous `debian`, qui lit `/var/backups/manne` par le groupe, grâce au setgid
+posé plus haut. Aucun `sudo`, aucun mot de passe. La ligne à ajouter dans
+`~debian/.ssh/authorized_keys` est donnée à l'étape suivante, une fois la clé générée.
 
-La ligne à ajouter dans `~debian/.ssh/authorized_keys` est donnée à l'étape 2, une fois la clé
-générée.
+### Sur le PC de la gérante : la clé
 
-#### 2. Sur le PC de la gérante — la clé
-
-Dans **Git Bash** (installé avec Git for Windows) :
+Dans Git Bash, installé avec Git for Windows :
 
 ```bash
 cd ~/chemin/vers/le/depot && git pull
@@ -255,19 +315,20 @@ ssh-keygen -t ed25519 -f ~/.ssh/manne-sauvegardes -C "pc-gerante-sauvegardes" -N
 cat ~/.ssh/manne-sauvegardes.pub
 ```
 
-La clé est générée **ici** : sa partie privée ne transite jamais. Pas de phrase de passe, parce
-qu'une tâche planifiée ne peut pas en saisir une — c'est acceptable *précisément parce que* la
-commande forcée réduit ce que la clé permet.
+La clé est générée sur place : sa partie privée ne transite jamais. Elle n'a pas de phrase
+de passe, parce qu'une tâche planifiée ne peut pas en saisir une — ce qui est acceptable
+précisément parce que la commande forcée réduit ce que la clé permet.
 
-Copier la sortie de `cat`, puis sur le VPS ajouter **une ligne** à `~debian/.ssh/authorized_keys`, en
-préfixant la clé publique par :
+Copier la sortie de `cat`, puis, sur le serveur, ajouter une ligne à
+`~debian/.ssh/authorized_keys` en préfixant la clé publique :
 
 ```
 restrict,command="/usr/local/bin/debiter-sauvegardes" ssh-ed25519 AAAA... pc-gerante-sauvegardes
 ```
 
-`restrict` désactive d'un coup terminal, redirection de ports, agent forwarding et X11 — et couvre
-aussi les capacités qu'OpenSSH ajouterait plus tard, ce qu'une liste de `no-*` ne ferait pas.
+`restrict` désactive d'un coup le terminal, la redirection de ports, l'agent forwarding et
+X11, et couvre aussi les capacités qu'OpenSSH ajouterait plus tard — ce qu'une liste de
+`no-*` ne ferait pas.
 
 Toujours dans Git Bash, créer `~/.ssh/config` :
 
@@ -280,31 +341,31 @@ Host manne-sauvegardes
     ConnectTimeout 30
 ```
 
-⚠️ **Première connexion à faire à la main**, pour accepter l'empreinte du serveur :
+La première connexion se fait à la main, pour accepter l'empreinte du serveur :
 
 ```bash
 ssh manne-sauvegardes > /tmp/essai.tar && tar -tf /tmp/essai.tar
 ```
 
-Sans cette étape, la tâche planifiée échouera à son premier tour : en `BatchMode`, ssh **refuse** un
-hôte inconnu au lieu de poser la question.
+Sans cette étape, la tâche planifiée échouerait à son premier tour : en `BatchMode`, ssh
+refuse un hôte inconnu au lieu de poser la question.
 
-#### 3. Sur le PC de la gérante — la tâche planifiée
+### Sur le PC de la gérante : la tâche planifiée
 
 ```powershell
 cd <depot>\deploiement
 .\installer-tache-rapatriement.ps1
 ```
 
-Si PowerShell refuse d'enregistrer la tâche, le relancer **en tant qu'administrateur**. Si la
+Si PowerShell refuse d'enregistrer la tâche, le relancer en tant qu'administrateur. Si la
 politique d'exécution bloque le script :
 `powershell -ExecutionPolicy Bypass -File .\installer-tache-rapatriement.ps1`.
 
-La tâche tourne à **10h00 sous la session ouverte de la gérante** : aucun mot de passe n'est stocké.
-L'option `StartWhenAvailable` rattrape l'exécution si le PC était éteint — c'est l'équivalent Windows
-du `Persistent=true` du timer systemd.
+La tâche tourne à 10h00 sous la session ouverte de la gérante, donc aucun mot de passe
+n'est stocké. L'option `StartWhenAvailable` rattrape l'exécution si le PC était éteint —
+c'est l'équivalent Windows du `Persistent=true` du timer systemd.
 
-#### Vérifier
+### Vérifier
 
 ```bash
 # Dans Git Bash : lancer un rapatriement à la main
@@ -313,93 +374,62 @@ ls -l ~/sauvegardes-manne
 tail -5 ~/sauvegardes-manne/rapatriement.log
 ```
 
-Attendu : une ligne `OK — N rapatriee(s), M conservee(s)`. Le journal est le seul témoin d'une tâche
-qui tourne sans que personne la regarde — **une ligne `ECHEC` répétée est le signal qu'il n'y a plus
-de copie hors site**, alors que tout semble normal par ailleurs.
+Attendu : une ligne `OK — N rapatriee(s), M conservee(s)`. Le journal est le seul témoin
+d'une tâche qui tourne sans que personne la regarde ; une ligne `ECHEC` répétée signale
+qu'il n'y a plus de copie hors site, alors que tout semble normal par ailleurs.
 
-Preuve que le transfert est intègre, à faire une fois :
+Deux preuves à faire une fois. D'abord l'intégrité du transfert :
 
 ```bash
 # sur le PC de la gérante
 sha256sum ~/sauvegardes-manne/manne_bulles-*.dump
-# sur le VPS
+# sur le serveur
 sha256sum /var/backups/manne/manne_bulles-*.dump
 ```
 
-Les empreintes doivent être identiques, octet pour octet.
-
-Preuve que la clé est bien bridée :
+Les empreintes doivent être identiques, octet pour octet. Ensuite, que la clé est bien
+bridée :
 
 ```bash
 ssh manne-sauvegardes "cat /etc/passwd"
 ```
 
-Doit renvoyer **l'archive tar**, pas le fichier demandé : l'argument du client est ignoré.
+La commande doit renvoyer l'archive `tar`, et non le fichier demandé : l'argument du client
+est ignoré.
 
-#### Rétention et RGPD
+### Rétention et protection des données
 
-**7 jours des deux côtés**, purgés automatiquement par le script — là où la conservation était
-auparavant laissée à un ménage manuel que personne n'aurait fait sur ce poste.
+Sept jours des deux côtés, purgés automatiquement par le script, là où la conservation
+était auparavant laissée à un ménage manuel que personne n'aurait fait sur ce poste.
 
-⚠️ **La purge n'a lieu qu'après un rapatriement réussi.** Si le VPS est injoignable, le script
-s'arrête sans rien supprimer : le jour où le serveur tombe pour de bon, la tâche planifiée ne doit pas
-effacer tranquillement la dernière copie qui reste.
+La purge n'a lieu qu'après un rapatriement réussi. Si le serveur est injoignable, le script
+s'arrête sans rien supprimer : le jour où il tombe pour de bon, la tâche planifiée ne doit
+pas effacer la dernière copie qui reste.
 
-Limite assumée : la copie hors site protège contre la perte du serveur, **pas contre une erreur
-logique découverte plus de sept jours après coup**. Choix fait au nom de la minimisation et de la
-limitation de conservation.
+Limite assumée : la copie hors site protège contre la perte du serveur, mais pas contre une
+erreur logique découverte plus de sept jours après coup. Choix fait au nom de la
+minimisation et de la limitation de conservation.
 
-⚠️ **Ne pas placer `sauvegardes-manne` dans `Documents`, `Bureau` ou `OneDrive`.** Ces dossiers sont
-souvent synchronisés vers le cloud sur un PC Windows grand public : les données personnelles des
-clientes partiraient chez un sous-traitant non prévu. Le script utilise `$HOME` — vérifier avec
-`echo $HOME` dans Git Bash que cela pointe bien sur un **disque local** et non sur un lecteur réseau.
+Ne pas placer `sauvegardes-manne` dans `Documents`, `Bureau` ou `OneDrive` : ces dossiers
+sont souvent synchronisés vers un cloud sur un PC Windows grand public, et les données
+personnelles des clients partiraient chez un sous-traitant non prévu. Le script utilise
+`$HOME` — vérifier avec `echo $HOME` dans Git Bash que cela pointe bien sur un disque local
+et non sur un lecteur réseau.
 
-#### Depuis le portable d'Alexis
+### Copie ponctuelle depuis un autre poste
 
-Sa clé n'est pas restreinte : une copie ponctuelle reste possible sans passer par ce dispositif.
+La clé d'Alexis n'est pas restreinte : une copie ponctuelle reste possible sans passer par
+ce dispositif.
 
 ```bash
 mkdir -p ~/sauvegardes-manne
 scp debian@vps-a87c8d0b.vps.ovh.net:/var/backups/manne/manne_bulles-*.dump ~/sauvegardes-manne/
 ```
 
-### Restaurer — procédure à connaître AVANT d'en avoir besoin
+## La base de test locale
 
-```bash
-# 1. Base temporaire
-sudo -u postgres createdb manne_bulles_restauration
-
-# 2. Restaurer le dump le plus récent (pas de nom à recopier : on le sélectionne)
-DERNIER=$(ls -t /var/backups/manne/manne_bulles-*.dump | head -1)
-echo "Restauration de $DERNIER"
-sudo -u postgres pg_restore -d manne_bulles_restauration "$DERNIER"
-
-# 3. Comparer les effectifs (le script est versionné dans le dépôt)
-sudo -u postgres psql -d manne_bulles -f /opt/manne/deploiement/effectifs.sql
-sudo -u postgres psql -d manne_bulles_restauration -f /opt/manne/deploiement/effectifs.sql
-
-# 4. Supprimer la base de test
-sudo -u postgres dropdb manne_bulles_restauration
-```
-
-Le script `deploiement/effectifs.sql` est versionné : inutile de le retaper. Si `postgres` ne peut
-pas lire `/opt/manne`, le copier d'abord : `cp /opt/manne/deploiement/effectifs.sql /tmp/`.
-
-⚠️ Il utilise `count(*)` et **non** `n_live_tup` de `pg_stat_user_tables` : cette dernière est une
-estimation issue des statistiques du planificateur, qui ne sont pas encore collectées sur une base
-fraîchement restaurée. Elle afficherait des zéros et ferait conclure à tort à une restauration ratée.
-
-Les deux sorties doivent être **identiques ligne pour ligne**.
-
-### Ce qui n'est pas sauvegardé
-
-Seule la base l'est, et c'est voulu : le code applicatif, l'agent d'impression et la passerelle SMS
-vivent dans Git. La base est la seule chose irremplaçable.
-
-## Base de test locale (US #330)
-
-Les tests d'intégration en base réelle (`backend/tests-base/*.base.test.js`) tournent sur une base
-dédiée, **uniquement sur le poste de développement**. À créer une seule fois :
+Les tests en base réelle (`backend/tests-base/*.base.test.js`) tournent sur une base
+dédiée, uniquement sur le poste de développement. À créer une seule fois :
 
 ```bash
 sudo -u postgres psql -c "CREATE DATABASE manne_bulles_test OWNER manne_bulles_admin;"
@@ -408,33 +438,35 @@ sudo -u postgres psql -d manne_bulles_test -c "CREATE EXTENSION IF NOT EXISTS pg
 
 Deux raisons au `sudo -u postgres` et au `OWNER` :
 
-- `CREATE EXTENSION` exige le **superutilisateur**. L'extension `pgcrypto` est nécessaire aux
+- `CREATE EXTENSION` exige le superutilisateur. L'extension `pgcrypto` est nécessaire aux
   `DEFAULT gen_random_uuid()` des cinq clés primaires du schéma.
-- `OWNER manne_bulles_admin` évite le piège **PostgreSQL 15+** déjà rencontré sur `manne_bulles` : le
-  propriétaire de la base dispose des droits sur le schéma `public` via `pg_database_owner`, donc pas
-  de `GRANT ALL ON SCHEMA public` à ajouter.
+- `OWNER manne_bulles_admin` évite le piège PostgreSQL 15 et suivants déjà rencontré sur
+  `manne_bulles` : le propriétaire de la base dispose des droits sur le schéma `public` via
+  `pg_database_owner`, donc pas de `GRANT ALL ON SCHEMA public` à ajouter.
 
-Le schéma est ensuite chargé automatiquement depuis `database/schema.sql` au démarrage de chaque
-fichier de test — rien à faire à la main, et aucune migration à rejouer (le schéma les intègre toutes).
+Le schéma est ensuite chargé automatiquement depuis `database/schema.sql` au démarrage de
+chaque fichier de test. Rien à faire à la main, et aucune migration à rejouer.
 
-### ⚠️ Jamais sur le VPS
+### Jamais sur le serveur
 
-Cette base n'existe **que** sur le poste de développement. Les tests ne doivent jamais viser la base de
-production : un test de clôture insère dans `sms_en_attente`, et la passerelle Termux interroge cette
-file toutes les 30 s sans pouvoir distinguer une ligne de test — elle enverrait un **vrai SMS à une
-vraie cliente**. S'y ajoutent les `DELETE`/`UPDATE` sur des commandes réelles.
+Cette base n'existe que sur le poste de développement. Les tests ne doivent jamais viser la
+base de production : un test de clôture insère dans `sms_en_attente`, et la passerelle
+interroge cette file toutes les 30 secondes sans pouvoir distinguer une ligne de test. Elle
+enverrait un vrai SMS à un vrai client. S'y ajoutent les `DELETE` et `UPDATE` sur des
+commandes réelles.
 
-Un garde-fou l'applique dans le code (`backend/tests-base/config-base.js`) : la suite refuse de démarrer
-si le nom de la base ne finit pas par `_test`.
+Un garde-fou l'applique dans le code, `backend/tests-base/config-base.js` : la suite refuse
+de démarrer si le nom de la base ne se termine pas par `_test`.
 
 ### Commandes
 
 ```bash
 cd backend
-npm test            # tout, en série (--runInBand) : rapides + base
+npm test            # tout, en série : rapides et base réelle
 npm run test:rapide # seulement les rapides, en parallèle, sans PostgreSQL
 npm run test:coverage
 ```
 
-`--runInBand` est indispensable : plusieurs fichiers de test qui vident et remplissent les mêmes tables
-en parallèle produiraient des échecs intermittents. Coût mesuré sur l'ensemble de la suite : **+1,2 s**.
+`--runInBand`, présent dans le script `test`, est indispensable : plusieurs fichiers de test
+qui vident et remplissent les mêmes tables en parallèle produiraient des échecs
+intermittents. Coût mesuré sur l'ensemble de la suite : 1,2 seconde.
